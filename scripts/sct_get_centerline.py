@@ -533,8 +533,29 @@ def normalize_array_histogram(array):
 
     return array
 
+def split_minimum_path(data, iter_num=1):
+    """
+    This function splits the data in the z direction
+    :param data: image data
+    :return: concatenation of all the splits results
+    """
 
-def get_minimum_path(data, smooth_factor=np.sqrt(2), invert=1, verbose=1, debug=0):
+    if iter_num == 0:
+        result, J1, J2, J1_norm = get_minimum_path(data)
+        return result
+    [m, n, p] = data.shape
+    bottom_split, J1, J2, result_J1 = get_minimum_path(data[:, :, 0:p/2])
+    top_split = bottom_split.shape
+    # top_split, J1_top, J2, result_J1_top = get_minimum_path(data[:, :, p/2:], init_slice=bottom_split[:, :, p/2-1])
+    if iter_num != 2:
+        top_split = split_minimum_path(data[:, :, p/2:], iter_num=iter_num+1)
+    else:
+        top_split, J1_top, J2, J1_result = get_minimum_path(data[:, :, p/2:], init_slice=bottom_split[:, :, p/2-1])
+    result = np.concatenate((bottom_split, top_split), 2)
+
+    return result
+
+def get_minimum_path(data, smooth_factor=np.sqrt(2), invert=1, verbose=1, debug=0, init_slice=0):
     """
     This method returns the minimal path of the image
     :param data: input data of the image
@@ -550,7 +571,11 @@ def get_minimum_path(data, smooth_factor=np.sqrt(2), invert=1, verbose=1, debug=
         data=max_value-data
     J1 = np.ones([m, n, p])*np.inf
     J2 = np.ones([m, n, p])*np.inf
-    J1[:, :, 0] = 0
+    if isinstance( init_slice, ( int, long ) ):
+        J1[:, :, 0] = 0
+    else:
+        J1[:, :, 0] = 1-init_slice
+    J2[:, :, p-1] = 0
     for row in range(1, p):
         pJ = J1[:, :, row-1]
         cP = np.squeeze(data[1:-2, 1:-2, row])
@@ -558,9 +583,8 @@ def get_minimum_path(data, smooth_factor=np.sqrt(2), invert=1, verbose=1, debug=
 
         Jq = np.dstack((pJ[0:-3, 1:-2], pJ[1:-2, 0:-3], pJ[1:-2, 1:-2], pJ[1:-2, 2:-1], pJ[2:-1, 1:-2]))
         J1[1:-2, 1:-2, row] = np.min(Jq+VI, 2)
-        pass
 
-    J2[:, :, p-1] = 0
+
     for row in range(p-2, -1, -1):
         pJ = J2[:, :, row+1]
         cP = np.squeeze(data[1:-2, 1:-2, row])
@@ -568,36 +592,46 @@ def get_minimum_path(data, smooth_factor=np.sqrt(2), invert=1, verbose=1, debug=
 
         Jq = np.dstack((pJ[0:-3, 1:-2], pJ[1:-2, 0:-3], pJ[1:-2, 1:-2], pJ[1:-2, 2:-1], pJ[2:-1, 1:-2]))
         J2[1:-2, 1:-2, row] = np.min(Jq+VI, 2)
-        pass
 
     result = J1+J2
+    result_J1 = J1
     if invert:
+        percent_J1 = np.percentile(J1, 50)
         percent = np.percentile(result, 50)
+        result_J1[result_J1 > percent_J1] = percent_J1
         result[result > percent] = percent
+
+        result_J1_min = np.amin(result)
+        result_J1_max = np.amax(result)
+        result_J1 = np.divide(np.subtract(result, result_J1_min), result_J1_max)
+        result_J1_max = np.amax(result)
 
         result_min = np.amin(result)
         result_max = np.amax(result)
         result = np.divide(np.subtract(result, result_min), result_max)
         result_max = np.amax(result)
 
+    result_J1 = 1-result_J1
     result = 1-result
 
     result[result == np.inf] = 0
     result[result == np.nan] = 0
 
-    return result, J1, J2
+    result_J1[result_J1 == np.inf] = 0
+    result_J1[result_J1 == np.nan] = 0
 
+    return result, J1, J2, result_J1
 
-def get_minimum_path_nii(fname):
-    from msct_image import Image
-    data=Image(fname)
-    vesselness_data = data.data
-    raw_orient=data.change_orientation()
-    result ,J1, J2 = get_minimum_path(data.data, invert=1)
-    data.data = result
-    data.change_orientation(raw_orient)
-    data.file_name += '_minimalpath'
-    data.save()
+# def get_minimum_path_nii(fname):
+#     from msct_image import Image
+#     data=Image(fname)
+#     vesselness_data = data.data
+#     raw_orient=data.change_orientation()
+#     # result ,J1, J2 = get_minimum_path(data.data, invert=1)
+#     data.data = result
+#     data.change_orientation(raw_orient)
+#     data.file_name += '_minimalpath'
+#     data.save()
 
 
 def ind2sub(array_shape, ind):
@@ -632,6 +666,25 @@ def get_centerline(data, dim):
 
     return centerline
 
+
+def get_sobel_per_slice(img):
+    """
+
+    :param img: Input image
+    :return: sobel filter magnitude of the 3D image
+    """
+    from scipy.ndimage.filters import sobel
+
+    original_orientation = img.change_orientation()
+    img_smooth = gaussian_filter(img.data, [3, 3, 0])
+    sobel_mag = np.zeros(np.shape(img_smooth))
+    for i in range(np.shape(img_smooth)[2]):
+        dy = sobel(img.data[:,:,i], 1)
+        dx = sobel(img.data[:,:,i], 0)
+        sobel_mag[:,:,i] = np.hypot(dx, dy)
+    img.change_orientation(original_orientation)
+
+    return sobel_mag
 
 class SymmetryDetector(Algorithm):
     def __init__(self, input_image, contrast=None, verbose=0, direction="lr", nb_sections=1, crop_xy=1):
@@ -738,6 +791,7 @@ class SCAD(Algorithm):
         self.smoothed_min_path = None
         self.spine_detect_data = None
         self.centerline_with_outliers = None
+        self.vesselness_contrast = ''
 
         self.debug_folder = None
         self.path_tmp = None
@@ -764,6 +818,11 @@ class SCAD(Algorithm):
             self._verbose = value
         else:
             raise Exception('ERROR: verbose value must be an integer and equal to 0 or 1')
+
+    def get_roi(self, img_in_data, img_roi_data):
+
+        img_in_data = np.multiply(img_in_data, img_roi_data)
+        return img_in_data
 
     def produce_output_files(self):
         """
@@ -881,6 +940,8 @@ class SCAD(Algorithm):
         # get input image information
         img = Image(raw_file_name)
 
+        #TEST GET SOBEL
+        # sobel_mag = get_sobel_per_slice(img)
         # save original orientation and change image to RPI
         self.raw_orientation = img.change_orientation()
 
@@ -895,29 +956,35 @@ class SCAD(Algorithm):
 
         if self.smooth_vesselness:
             from msct_image import change_data_orientation
-            img.data = gaussian_filter(img.data, [10,10, 1])
-            self.output_debug_file(img, img.data, "raw_smooth")
-            normalised_symmetry = normalize_array_histogram(self.raw_symmetry)
-            # normalized_data = normalize_array_histogram(img.data)
-            img.data = np.multiply(img.data, change_data_orientation(normalised_symmetry, self.raw_orientation, "RPI"))
-            img.file_name = "symmetry_x_rawsmoothed"
-            raw_file_name = img.file_name + img.ext
+            img.data = gaussian_filter(img.data, [5,5, 1])
+            self.output_debug_file(img, img.data, "raw_smooth_debug")
+            #if self.enable_symmetry:
+            #    normalised_symmetry = normalize_array_histogram(self.raw_symmetry)
+            #    img.data = np.multiply(img.data, change_data_orientation(normalised_symmetry, self.raw_orientation, "RPI"))
+            #    img.file_name = "symmetry_x_rawsmoothed"
+            img.file_name = "raw_smooth"
             img.change_orientation(self.raw_orientation)
             img.save()
-            self._contrast = "t1"
+            self.vesselness_contrast = "t1"
 
         # vesselness filter
         if not self.vesselness_provided:
-            sct.run('isct_vesselness -i '+raw_file_name+' -t ' + self._contrast+" -radius "+str(self.spinalcord_radius))
+            if self.vesselness_contrast != '':
+                sct.run('isct_vesselness -i '+raw_file_name+' -t ' + self.vesselness_contrast+" -radius "+str(self.spinalcord_radius))
+                self.vesselness_contrast = ''
+            else:
+                sct.run('isct_vesselness -i '+raw_file_name+' -t ' + self._contrast+" -radius "+str(self.spinalcord_radius))
 
         # load vesselness filter data and perform minimum path on it
         img = Image(vesselness_file_name)
 
         img.change_orientation()
-        self.minimum_path_data, self.J1_min_path, self.J2_min_path = get_minimum_path(img.data, invert=1, debug=1)
+        # self.minimum_path_data, self.J1_min_path, self.J2_min_path = get_minimum_path(img.data, invert=1, debug=1)
+        # self.output_debug_file(img, self.minimum_path_data, "minimal_path")
+        # self.output_debug_file(img, self.J1_min_path, "J1_minimal_path")
+        # self.output_debug_file(img, self.J2_min_path, "J2_minimal_path")
+        self.minimum_path_data = split_minimum_path(img.data, iter_num=0)
         self.output_debug_file(img, self.minimum_path_data, "minimal_path")
-        self.output_debug_file(img, self.J1_min_path, "J1_minimal_path")
-        self.output_debug_file(img, self.J2_min_path, "J2_minimal_path")
 
         # Apply an exponent to the minimum path
         self.minimum_path_powered = np.power(self.minimum_path_data, self.minimum_path_exponent)
@@ -945,7 +1012,7 @@ class SCAD(Algorithm):
         else:
             # extract the centerline from the minimal path image
             self.centerline_with_outliers = get_centerline(self.smoothed_min_path.data, self.smoothed_min_path.data.shape)
-        self.output_debug_file(img, self.centerline_with_outliers, "centerline_with_outliers")
+        self.output_debug_file(img, self.centerline_with_outliers, "centerline_with_outliers_debug")
 
         # saving centerline with outliers to have
         img.data = self.centerline_with_outliers
@@ -959,23 +1026,51 @@ class SCAD(Algorithm):
         # save the centerline
         nx, ny, nz, nt, px, py, pz, pt = img.dim
         img.data = np.zeros((nx, ny, nz))
-        for i in range(0, np.size(x)-1):
+        for i in range(0, np.size(x)):
             img.data[int(x[i]), int(y[i]), int(z[i])] = 1
 
         self.output_debug_file(img, img.data, "centerline")
-        img.change_orientation(self.raw_orientation)
-        img.file_name = "centerline"
-        img.save()
 
-        # copy back centerline
-        os.chdir('../')
-        conv.convert(self.path_tmp+img.file_name+img.ext, self.output_filename)
-        if self.rm_tmp_file == 1:
-            import shutil
-            shutil.rmtree(self.path_tmp)
+        if self.smooth_vesselness:
 
-        print "To view the output with FSL :"
-        sct.printv("fslview "+self.input_image.absolutepath+" "+self.output_filename+" -l Red", self.verbose, "info")
+            # Put code after approx here
+            # 1. we want a mask around the centerline :
+            # mask size will be 3 cm (we need to find the number of pixels for 3cm)
+            x_pix_mask = int(20/px)
+            y_pix_mask = int(20/py)
+
+            img.change_orientation(self.raw_orientation)
+            img.file_name = "approx_centerline"
+            img.save()
+            img.change_orientation()
+            sct.run('sct_orientation -i approx_centerline.nii.gz -s RPI -o approx_centerline_RPI.nii.gz')
+            sct.run('sct_create_mask -i approx_centerline_RPI.nii.gz -o centerline_mask.nii.gz -m centerline,approx_centerline_RPI.nii.gz -f box -s '+str(x_pix_mask))
+            self.output_debug_file(img, Image('centerline_mask.nii.gz').data, "centerline_mask_debug")
+            img = Image('raw.nii')
+            img.change_orientation()
+            img_roi = Image('centerline_mask.nii.gz')  # in RPI
+            img_roi.change_orientation()
+            img.data = self.get_roi(img.data, img_roi.data)
+            self.output_debug_file(img, img.data, "approx_cropped")
+            self.input_image = Image('approx_cropped.nii')
+            self.input_image.data = gaussian_filter(self.input_image.data, [2,2, 0])
+            self.smooth_vesselness = 0
+            self.execute()
+
+        else:
+            img.change_orientation(self.raw_orientation)
+            img.file_name = "centerline"
+            img.save()
+
+            # copy back centerline
+            os.chdir('../')
+            conv.convert(self.path_tmp+img.file_name+img.ext, self.output_filename)
+            if self.rm_tmp_file == 1:
+                import shutil
+                shutil.rmtree(self.path_tmp)
+
+            print "To view the output with FSL :"
+            sct.printv("fslview "+self.input_image.absolutepath+" "+self.output_filename+" -l Red", self.verbose, "info")
 
 
 class GetCenterlineScript(BaseScript):
