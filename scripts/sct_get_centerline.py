@@ -1036,8 +1036,8 @@ class SCAD(Algorithm):
             # Put code after approx here
             # 1. we want a mask around the centerline :
             # mask size will be 3 cm (we need to find the number of pixels for 3cm)
-            x_pix_mask = int(20/px)
-            y_pix_mask = int(20/py)
+            x_pix_mask = int(30/px)
+            y_pix_mask = int(30/py)
 
             img.change_orientation(self.raw_orientation)
             img.file_name = "approx_centerline"
