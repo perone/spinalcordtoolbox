@@ -40,13 +40,14 @@ If the segmentation fails at some location (e.g. due to poor contrast between sp
                       description="type of image contrast, t2: cord dark / CSF bright ; t1: cord bright / CSF dark",
                       mandatory=True,
                       example=['t1','t2'])
+
     parser.usage.addSection("General options")
-    parser.add_option(name="-o",
+    parser.add_option(name="-ofolder",
                       type_value="folder_creation",
                       description="output folder.",
                       mandatory=False,
                       example="My_Output_Folder/",
-                      default_value=".")
+                      default_value="")
     parser.add_option(name="-down",
                       type_value="int",
                       description="down limit of the propagation, default is 0",
@@ -162,7 +163,10 @@ If the segmentation fails at some location (e.g. due to poor contrast between sp
     # Building the command
     cmd = "isct_propseg" + " -i " + input_filename + " -t " + contrast_type
 
-    folder_output = arguments["-o"]
+    if "-ofolder" in arguments:
+        folder_output = arguments["-ofolder"]
+    else:
+        folder_output = '.'
     cmd += " -o " + folder_output
 
     if "-down" in arguments:
@@ -198,7 +202,12 @@ If the segmentation fails at some location (e.g. due to poor contrast between sp
 
     # Helping options
     if "-init-centerline" in arguments:
-        cmd += " -init-centerline " + str(arguments["-init-centerline"])
+        # need to make sure that the centerline that is provided has only one point per slice. So we generate a new
+        # "centerline" using sct_process_segmentation. Related to issue #544
+        input_centerline = str(arguments["-init-centerline"])
+        temp_centerline = sct.add_suffix(arguments["-init-centerline"], '_centerline')
+        sct.run('sct_process_segmentation -i ' + input_centerline + ' -p centerline')
+        cmd += " -init-centerline " + temp_centerline
     if "-init" in arguments:
         cmd += " -init " + str(arguments["-init"])
     if "-init-mask" in arguments:

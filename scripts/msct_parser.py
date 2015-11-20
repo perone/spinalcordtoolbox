@@ -13,7 +13,7 @@
 # - str, int, float, long, complex (check if input is the correct type)
 # - multiple_choice
 # - coordinate [x, y, z, value]
-# - lists, for example list of coordinate: [[','],'Coordinate']
+# - lists, for example list of coordinate:
 # - None, return True when detected (example of boolean)
 #
 # The parser returns a dictionary with all mandatory arguments as well as optional arguments with default values.
@@ -164,7 +164,11 @@ class Option:
             sub_type = type_option[1]
             param_splitted = param.split(delimiter)
             if len(param_splitted) != 0:
-                return list([self.check_integrity(val,sub_type) for val in param_splitted])
+                # check if files are separated by space (if "*" was used)
+                if not param_splitted[0].find(' ') == -1:
+                    # if so, split and return list
+                    param_splitted = param_splitted[0].split(' ')
+                return list([self.check_integrity(val, sub_type) for val in param_splitted])
             else:
                 self.parser.usage.error("ERROR: Option "+self.name+" must be correctly written. See usage.")
 
@@ -240,6 +244,8 @@ class Option:
             sct.printv("ERROR: Permission denied for folder creation...", type="error")
         elif result_creation == 1:
             sct.printv("Folder "+param+" has been created.", 0, type='warning')
+        # add slash at the end
+        param = sct.slash_at_the_end(param, 1)
         return param
 
 
@@ -360,16 +366,15 @@ class Parser:
                 else:
                     self.usage.error("ERROR: argument "+arg+" does not exist. See documentation.")
 
-        if dictionary:
-            # check if all mandatory arguments are provided by the user
-            for option in [opt for opt in self.options if self.options[opt].mandatory]:
-                if option not in dictionary:
-                    self.usage.error('ERROR: ' + option + ' is a mandatory argument.\n')
+        # check if all mandatory arguments are provided by the user
+        for option in [opt for opt in self.options if self.options[opt].mandatory]:
+            if option not in dictionary:
+                self.usage.error('ERROR: ' + option + ' is a mandatory argument.\n')
 
-            # check if optional arguments with default values are all in the dictionary. If not, add them.
-            for option in [opt for opt in self.options if not self.options[opt].mandatory]:
-                if option not in dictionary and self.options[option].default_value:
-                    dictionary[option] = self.options[option].default_value
+        # check if optional arguments with default values are all in the dictionary. If not, add them.
+        for option in [opt for opt in self.options if not self.options[opt].mandatory]:
+            if option not in dictionary and self.options[option].default_value:
+                dictionary[option] = self.options[option].default_value
 
         # return a dictionary with each option name as a key and the input as the value
         return dictionary
@@ -437,7 +442,7 @@ class Usage:
 """+basename(self.file)+"""
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Part of the Spinal Cord Toolbox <https://sourceforge.net/projects/spinalcordtoolbox>
-Modified on """ + str(self.get_modif_date_time())
+Version: """ + str(self.get_sct_version())
 
     def set_description(self, description):
         self.description = '\n\nDESCRIPTION\n' + self.align(description, length=100, pad=0)
@@ -445,22 +450,16 @@ Modified on """ + str(self.get_modif_date_time())
     def addSection(self, section):
         self.section[len(self.arguments)+1] = section
 
-    def get_modif_date_time(self):
+    def get_sct_version(self):
         from commands import getstatusoutput
         from os.path import basename
         status, path_sct = getstatusoutput('echo $SCT_DIR')
-        fname = str(path_sct)+'/scripts/modif.txt'
+        fname = str(path_sct)+'/version.txt'
         content = ""
-        with open(fname, mode = 'r+') as f:
+        with open(fname, mode = 'r') as f:
             content = f.readlines()
         f.close()
-
-        for line in content:
-            if line.find(basename(self.file)) != -1:
-                result = line.split('=')
-                return result[1]
-
-        return ''
+        return content[0]
 
     def set_usage(self):
         from os.path import basename

@@ -23,10 +23,10 @@ import time
 import numpy
 import nibabel
 from scipy import ndimage
-from sct_orientation import get_orientation, set_orientation
+from sct_image import get_orientation
 from sct_convert import convert
 from msct_image import Image
-from sct_copy_header import copy_header
+from sct_image import copy_header, concat_data
 
 
 # DEFAULT PARAMETERS
@@ -40,6 +40,7 @@ class Param:
         self.shape_list = ['cylinder', 'box', 'gaussian']
         self.shape = 'cylinder'  # default shape
         self.size = 41  # in voxel. if gaussian, size corresponds to sigma.
+        self.even = 0
         self.file_prefix = 'mask_'  # output prefix
         self.verbose = 1
         self.remove_tmp_files = 1
@@ -63,7 +64,7 @@ def main():
     else:
         # Check input parameters
         try:
-            opts, args = getopt.getopt(sys.argv[1:], 'hf:i:m:o:r:s:v:')
+            opts, args = getopt.getopt(sys.argv[1:], 'hf:i:m:o:r:s:e:v:')
         except getopt.GetoptError:
             usage()
         if not opts:
@@ -77,12 +78,14 @@ def main():
                 param.fname_data = arg
             elif opt in '-m':
                 param.method = arg
-            elif opt in ('-o'):
+            elif opt in '-o':
                 param.fname_out = arg
             elif opt in '-r':
                 param.remove_tmp_files = int(arg)
             elif opt in '-s':
                 param.size = int(arg)
+            elif opt in '-e':
+                param.even = int(arg)
             elif opt in '-v':
                 param.verbose = int(arg)
 
@@ -126,9 +129,9 @@ def create_mask():
 
     # check if orientation is RPI
     sct.printv('\nCheck if orientation is RPI...', param.verbose)
-    status, output = sct.run('sct_orientation -i '+param.fname_data)
-    if not output == 'RPI':
-        sct.printv('\nERROR in '+os.path.basename(__file__)+': Orientation of input image should be RPI. Use sct_orientation to put your image in RPI.\n', 1, 'error')
+    ori = get_orientation(param.fname_data, filename=True)
+    if not ori == 'RPI':
+        sct.printv('\nERROR in '+os.path.basename(__file__)+': Orientation of input image should be RPI. Use sct_image -setorient to put your image in RPI.\n', 1, 'error')
 
     # display input parameters
     sct.printv('\nInput parameters:', param.verbose)
@@ -213,21 +216,24 @@ def create_mask():
     file_mask = 'data_mask'
     for iz in range(nz):
         center = numpy.array([cx[iz], cy[iz]])
-        mask2d = create_mask2d(center, param.shape, param.size, nx, ny)
+        mask2d = create_mask2d(center, param.shape, param.size, nx, ny, param.even)
         # Write NIFTI volumes
         img = nibabel.Nifti1Image(mask2d, None, hdr)
         nibabel.save(img, (file_mask+str(iz)+'.nii'))
     # merge along Z
     # cmd = 'fslmerge -z mask '
-    cmd = 'sct_concat_data -dim z -o mask.nii.gz -i '
+    im_list = []
     for iz in range(nz):
-        cmd = cmd + file_mask+str(iz)+'.nii,'
-    # remove ',' at the end of the string
-    cmd = cmd[:-1]
-    status, output = sct.run(cmd, param.verbose)
+        im_list.append(Image(file_mask+str(iz)+'.nii'))
+    im_out = concat_data(im_list, 2)
+    im_out.setFileName('mask.nii.gz')
+    im_out.save()
 
     # copy geometry
-    copy_header('data.nii', 'mask.nii.gz')
+    im_dat = Image('data.nii')
+    im_mask = Image('mask.nii.gz')
+    im_mask = copy_header(im_dat, im_mask)
+    im_mask.save()
 
     # come back to parent folder
     os.chdir('..')
@@ -239,7 +245,7 @@ def create_mask():
     # Remove temporary files
     if param.remove_tmp_files == 1:
         sct.printv('\nRemove temporary files...', param.verbose)
-        sct.run('rm -rf '+path_tmp, param.verbose)
+        sct.run('rm -rf '+path_tmp, param.verbose, error_exit='warning')
 
     # to view results
     sct.printv('\nDone! To view results, type:', param.verbose)
@@ -271,17 +277,23 @@ def create_line(fname, coord, nz):
 
 # create_mask2d
 # ==========================================================================================
-def create_mask2d(center, shape, size, nx, ny):
+def create_mask2d(center, shape, size, nx, ny, even=0):
 
     # initialize 2d grid
     xx, yy = numpy.mgrid[:nx, :ny]
     mask2d = numpy.zeros((nx, ny))
     xc = center[0]
     yc = center[1]
-    radius = round(float(size+1)/2)  # add 1 because the radius includes the center.
+    if even != 0:
+        radius = int(size / 2)
+    else:
+        radius = round(float(size + 1) / 2)  # add 1 because the radius includes the center.
 
     if shape == 'box':
-        mask2d[xc-radius:xc+radius+1, yc-radius:yc+radius+1] = 1
+        if even != 0:
+            mask2d[xc - radius:xc + radius, yc - radius:yc + radius] = 1
+        else:
+            mask2d[xc-radius:xc+radius+1, yc-radius:yc+radius+1] = 1
 
     elif shape == 'cylinder':
         mask2d = ((xx-xc)**2 + (yy-yc)**2 <= radius**2)*1
@@ -320,7 +332,8 @@ OPTIONAL ARGUMENTS
                      center: mask is created at center of FOV. In that case, "val" is not required.
                      centerline: volume that contains centerline. E.g.: centerline,my_centerline.nii
   -s <size>        size in voxel. Odd values are better (for mask to be symmetrical). Default="""+str(param_default.size)+"""
-                   If shape=gaussian, size corresponds to "sigma". 
+                   If shape=gaussian, size corresponds to "sigma".
+  -e {0,1}         0: box size is odd. 1: box size is even.
   -f {box,cylinder,gaussian}  shape of the mask. Default="""+str(param_default.shape)+"""
   -o <output>      name of output mask. Default is "mask_INPUTFILE".
   -r {0,1}         remove temporary files. Default="""+str(param_default.remove_tmp_files)+"""

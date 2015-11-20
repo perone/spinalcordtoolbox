@@ -38,7 +38,7 @@ class SegmentationParam:
         self.path_model = path_sct+'/data/gm_model' # None  # '/Volumes/folder_shared/greymattersegmentation/data_asman/dictionary'
         self.todo_model = 'load'  # 'compute'
         self.new_model_dir = './gm_model'
-        self.output_name = ''
+        self.output_path = ''
         self.reg = ['Affine']  # default is Affine  TODO : REMOVE THAT PARAM WHEN REGISTRATION IS OPTIMIZED
         self.reg_metric = 'MI'
         self.target_denoising = True
@@ -53,14 +53,16 @@ class SegmentationParam:
         self.z_regularisation = False
         self.res_type = 'prob'
         self.dev = False
+        self.qc = 0
         self.verbose = 1
+        self.remove_tmp = 1
 
     def __repr__(self):
         s = ''
         s += 'path_model: ' + str(self.path_model) + '\n'
         s += 'todo_model: ' + str(self.todo_model) + '\n'
         s += 'new_model_dir: ' + str(self.new_model_dir) + '  *** only used if todo_model=compute ***\n'
-        s += 'output_name: ' + str(self.output_name) + '\n'
+        s += 'output_path: ' + str(self.output_path) + '\n'
         s += 'reg: ' + str(self.reg) + '\n'
         s += 'reg_metric: ' + str(self.reg_metric) + '\n'
         s += 'target_denoising: ' + str(self.target_denoising) + ' ***WARNING: used in sct_segment_gray_matter not in msct_multiatlas_seg***\n'
@@ -74,7 +76,9 @@ class SegmentationParam:
         s += 'mode_weight_similarity: ' + str(self.mode_weight_similarity) + '\n'
         s += 'z_regularisation: ' + str(self.z_regularisation) + '\n'
         s += 'res_type: ' + str(self.res_type) + '\n'
+        s += 'qc: ' + str(self.qc) + '\n'
         s += 'verbose: ' + str(self.verbose) + '\n'
+        s += 'remove_tmp: ' + str(self.remove_tmp) + '\n'
 
         return s
 
@@ -802,31 +806,11 @@ class TargetSegmentationPairwise:
                     seg_averages_by_level = self.model.dictionary.mean_seg_by_level(type='binary')[0]
                     mean_seg_by_level = [seg_averages_by_level[self.model.dictionary.level_label[target_slice.level]] for target_slice in self.target]
 
-                    print mean_seg_by_level
-                    print 'type : ', type(mean_seg_by_level)
-
+                    # saving images to check results of normalisation
                     Image(param=np.asarray(mean_seg_by_level), absolutepath='mean_seg_by_level.nii.gz').save()
                     Image(param=np.asarray([target_slice.im_M for target_slice in self.target]), absolutepath='target_moved.nii.gz').save()
 
                     target_metric = extract_metric_from_dic(self.target, seg_to_use=mean_seg_by_level, metric=method, save=True, output='metric_in_target.txt')
-
-                    # metric averaged overall
-                    '''
-                    print 'USE AVERAGED TARGET METRIC'
-                    target_metric = [np.mean(target_metric.values(), axis=0) for i in range(len(self.target))]
-                    '''
-                    # metric averaged by level
-                    '''
-                    target_metric_by_level = {}
-                    for target_slice in self.target:
-                        slice_metric = target_metric[target_slice.id]
-                        if target_slice.level in target_metric_by_level.keys():
-                            target_metric_by_level[target_slice.level].append(slice_metric)
-                        else:
-                            target_metric_by_level[target_slice.level] = [slice_metric]
-                    for l, metric in target_metric_by_level.items():
-                        target_metric_by_level[l] = np.mean(metric, axis=0)
-                    '''
 
                 else:
                     sct.printv('WARNING: No mean value of the white matter and gray matter intensity were provided, nor the target vertebral levels to estimate them\n'
@@ -838,9 +822,13 @@ class TargetSegmentationPairwise:
 
             if type(target_metric) == type({}): # if target_metric is a dictionary
                 differences = [m[1]-m[0] for m in target_metric.values()]
-                lim_diff = np.median(differences) - np.std(differences)
+                diff_med = np.median(differences)
+                diff_std = np.std(differences)
+                # contrast_type = diff_med /np.abs(diff_med)  # if 1: GM bright, WM dark ; if -1: GM dark, WM bright
+                lim_diff = np.abs(diff_med - diff_std)
             else:
                 differences = [0]
+                diff_med = 0
                 lim_diff = 0
 
             # normalizing
@@ -848,18 +836,13 @@ class TargetSegmentationPairwise:
                 i = 0
                 for target_slice in self.target:
                     old_image = target_slice.im_M
-                    '''
-                    if self.model.param.target_means is None and self.model.param.use_levels:
-                        wm_mean, gm_mean, wm_std, gm_std = target_metric_by_level[target_slice.level]
-                        print 'USE MEAN BY LEVEL OF THE TARGET METRIC'
-                    else:
-                    '''
+
                     wm_metric, gm_metric, wm_std, gm_std = target_metric[target_slice.id]
-                    if gm_metric-wm_metric < lim_diff:
-                        print 'CORRECTING WM VALUE FOR SLICE ', i
-                        wm_metric = gm_metric-np.median(differences)
+                    if np.abs(gm_metric-wm_metric) < lim_diff:
+                        wm_metric = gm_metric-diff_med  # np.median(differences)  # if med>0: GM bright, WM dark ; if med<0: GM dark, WM bright
+                    old_image[old_image < 0.0001] = 0  # put at 0 the background
                     new_image = (old_image - wm_metric)*(dic_gm_mean - dic_wm_mean)/(gm_metric - wm_metric) + dic_wm_mean
-                    new_image[old_image < 1] = 0  # put a 0 the min background
+                    new_image[old_image < 0.0001] = 0  # put at 0 the background
 
                     target_slice.im_M = new_image
                     Image(param=new_image, absolutepath='target_slice'+str(i)+'_mean_normalized.ni.gz').save()
@@ -1084,30 +1067,31 @@ sct_Image
             self.target_seg_methods = TargetSegmentationPairwise(self.model, target_image=self.target_image)
 
         # get & save the result gray matter segmentation
-        if gm_seg_param.output_name == '':
-            suffix = ''
-            if self.model.param.dev:
-                suffix += '_' + gm_seg_param.res_type
-                for transfo in self.model.dictionary.coregistration_transfos:
-                    suffix += '_' + transfo
-                if self.model.param.use_levels:
-                    suffix += '_with_levels_' + '_'.join(str(self.model.param.weight_gamma).split('.'))  # replace the '.' by a '_'
-                else:
-                    suffix += '_no_levels'
-                if self.model.param.z_regularisation:
-                    suffix += '_Zregularisation'
-                if self.model.param.target_normalization:
-                    suffix += '_normalized'
+        # if gm_seg_param.output_name == '':
+        suffix = ''
+        if self.model.param.dev:
+            suffix += '_' + gm_seg_param.res_type
+            for transfo in self.model.dictionary.coregistration_transfos:
+                suffix += '_' + transfo
+            if self.model.param.use_levels:
+                suffix += '_with_levels_' + '_'.join(str(self.model.param.weight_gamma).split('.'))  # replace the '.' by a '_'
+            else:
+                suffix += '_no_levels'
+            if self.model.param.z_regularisation:
+                suffix += '_Zregularisation'
+            if self.model.param.target_normalization:
+                suffix += '_normalized'
 
-            name_res_wmseg = sct.extract_fname(target_fname)[1] + '_wmseg' + suffix  # TODO: remove suffix when parameters are all optimized
-            name_res_gmseg = sct.extract_fname(target_fname)[1] + '_gmseg' + suffix  # TODO: remove suffix when parameters are all optimized
-            ext = sct.extract_fname(target_fname)[2]
+        name_res_wmseg = sct.extract_fname(target_fname)[1] + '_wmseg' + suffix  # TODO: remove suffix when parameters are all optimized
+        name_res_gmseg = sct.extract_fname(target_fname)[1] + '_gmseg' + suffix  # TODO: remove suffix when parameters are all optimized
+        ext = sct.extract_fname(target_fname)[2]
+        '''
         else:
             name_res_wmseg = ''.join(sct.extract_fname(gm_seg_param.output_name)[:-1]) + '_wmseg'
             name_res_gmseg = ''.join(sct.extract_fname(gm_seg_param.output_name)[:-1]) + '_gmseg'
             ext = sct.extract_fname(gm_seg_param.output_name)[2]
-
-        if len(self.target_seg_methods.target) == 1:
+        '''
+        if len(self.target_seg_methods.target) == 1: # if target is 2D (1 SLICE)
             self.res_wm_seg = Image(param=np.asarray(self.target_seg_methods.target[0].wm_seg), absolutepath=name_res_wmseg + ext)
             self.res_gm_seg = Image(param=np.asarray(self.target_seg_methods.target[0].gm_seg), absolutepath=name_res_gmseg + ext)
         else:
@@ -1239,7 +1223,7 @@ if __name__ == "__main__":
         if "-i" in arguments:
             input_target_fname = arguments["-i"]
         if "-o" in arguments:
-            param.output_name = arguments["-o"]
+            param.output_path = arguments["-o"]
         if "-model" in arguments:
             param.path_model = arguments["-model"]
         if "-todo-model" in arguments:
