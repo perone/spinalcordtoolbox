@@ -37,11 +37,175 @@ import sys
 import os
 import nibabel as nib
 from msct_image import Image
-from dev.sct_scad import SCAD
+from sct_get_centerline import SCAD
 import numpy as np
 import sct_utils as sct
 from sct_utils import printv
 import matplotlib.pyplot as plt
+
+def approx_validation(folder_input, contrast_directory, contrast):
+    """
+    Expecting folder to have the following structure :
+    errsm_01:
+    - t2
+    -- errsm_01.nii.gz or t2.nii.gz
+    --
+    :param folder_input:
+    :return:
+    """
+    from sct_get_centerline import ind2sub
+    import time
+    import math
+    import numpy
+
+    t0 = time.time()
+
+    current_folder = os.getcwd()
+    os.chdir(folder_input)
+
+    try:
+        patients = next(os.walk('.'))[1]
+        overall_distance = {}
+        max_distance = {}
+        standard_deviation = 0
+        overall_std = {}
+        rmse = {}
+        slice_intersection = {}
+        slice_percent = {}
+        for i in patients:
+            directory = i + "/" + str(contrast_directory)
+            try:
+                os.chdir(directory)
+            except Exception, e:
+                print str(i)+" : "+contrast_directory+" directory not found"
+
+            manual_seg = None
+            try:
+                if os.path.isfile(i+"_"+contrast_directory+".nii.gz"):
+                    raw_image = Image(i+"_"+contrast_directory+".nii.gz")
+                elif os.path.isfile(contrast_directory+".nii.gz"):
+                    raw_image = Image(contrast_directory+".nii.gz")
+                elif os.path.isfile(i+".nii.gz"):
+                    raw_image = Image(i+".nii.gz")
+                else:
+                    raise Exception("Patient scan not found")
+
+                if os.path.isfile(i+"_"+contrast_directory+"_manual_segmentation.nii.gz"):
+                    manual_seg = Image(i+"_"+contrast_directory+"_manual_segmentation.nii.gz")
+                elif os.path.isfile(i+"_manual_segmentation.nii.gz"):
+                    manual_seg = Image(i+"_manual_segmentation.nii.gz")
+
+                if manual_seg is not None:
+                    raw_orientation = raw_image.change_orientation()
+
+                    scad = SCAD(raw_image, contrast=contrast, rm_tmp_file=0, verbose=2, smooth_vesselness=1, vesselness_contrast='t2')
+                    scad.execute()
+
+                    manual_orientation = manual_seg.change_orientation()
+
+                    from scipy.ndimage.measurements import center_of_mass
+                    # find COM
+                    iterator = range(manual_seg.data.shape[2])
+                    com_x = [0 for ix in iterator]
+                    com_y = [0 for iy in iterator]
+
+                    for iz in iterator:
+                        com_x[iz], com_y[iz] = center_of_mass(manual_seg.data[:, :, iz])
+
+                    centerline_scad = Image("approx_centerline.nii.gz")
+                    # os.remove(i+"_"+contrast+"_centerline.nii.gz")
+
+                    centerline_scad.change_orientation()
+                    distance = {}
+                    for iz in range(0, centerline_scad.data.shape[2]):
+                        ind1 = np.argmax(centerline_scad.data[:, :, iz])
+                        X,Y = ind2sub(centerline_scad.data[:, :, iz].shape,ind1)
+                        com_phys = np.array(manual_seg.transfo_pix2phys([[com_x[iz], com_y[iz], iz]]))
+                        scad_phys = np.array(centerline_scad.transfo_pix2phys([[X, Y, iz]]))
+                        distance_magnitude = np.linalg.norm([com_phys[0][0]-scad_phys[0][0], com_phys[0][1]-scad_phys[0][1], 0])
+                        if math.isnan(distance_magnitude):
+                            print "Value is nan"
+                        else:
+                            distance[iz] = distance_magnitude
+
+                    f = open(i+"_"+contrast+"_results.txt", 'w+')
+                    f.write("Patient,Slice,Distance")
+                    for key, value in distance.items():
+                        f.write(i+","+str(key)+","+str(value))
+
+                    standard_deviation = np.std(np.array(distance.values()))
+                    average = sum(distance.values())/len(distance)
+                    root_mean_square = np.sqrt(np.mean(np.square(distance.values())))
+
+                    f.write("\nAverage : "+str(average))
+                    f.write("\nStandard Deviation : "+str(standard_deviation))
+
+                    f.close()
+
+                    overall_distance[i] = average
+                    max_distance[i] = max(distance.values())
+                    overall_std[i] = standard_deviation
+                    rmse[i] = root_mean_square
+
+                    roi = Image('centerline_mask.nii.gz')
+                    roi.change_orientation()
+
+                    # compute intersection %
+                    hit = 0
+                    fail = 0
+                    denumerator = 0
+                    numerator = 0
+                    for x in range(0, roi.data.shape[0]):
+                        for y in range(0, roi.data.shape[1]):
+                            for z in range(0, roi.data.shape[2]):
+                                if int(roi.data[x,y,z]) == 1 and int(manual_seg.data[x,y,z]) == 1:
+                                    numerator += 1
+                                    denumerator += 1
+                                    hit += 1
+                                elif int(roi.data[x,y,z]) == 1:
+                                    denumerator += 1
+                                elif int(manual_seg.data[x,y,z]) == 1:
+                                    fail += 1
+
+                    slice_intersection[i] = float(float(hit)/(float(hit)+float(fail)))
+                    slice_percent[i] = float(float(numerator)/float(denumerator))
+                    # compute mask %
+
+                else:
+                    printv("Cannot find the manual segmentation", type="warning")
+
+            except Exception, e:
+                print e.message
+
+            os.chdir(folder_input)
+
+        print str(time.time() - t0) + 'seconds to execute'
+        # Get overall distance
+        f = open("scad_validation_results_"+contrast+"_"+time.strftime("%y%m%d%H%M%S")+".txt", "w+")
+        f.write("Patient,Average,MRSE,Standard Deviation,Max,Mask Size % (of slice),Slice Intersection%\n")
+        for key,value in overall_distance.items():
+            for subject, max_value in max_distance.items():
+                for std_id, std_val in overall_std.items():
+                    for rms_i, rms_val in rmse.items():
+                        for per_id, per_val in slice_percent.items():
+                            for int_id, int_val in slice_intersection.items():
+                                if key == subject and subject == std_id and std_id == rms_i and rms_i == per_id and per_id == int_id:
+                                    f.write(key+","+str(value)+","+str(rms_val)+","+str(std_val)+","+str(max_value)+","+str(per_val)+","+str(int_val)+"\n")
+        #
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.hist()
+
+
+        # average_total = sum(overall_distance.values())/len(overall_distance)
+        # average_max = sum(max_distance.values())/len(max_distance)
+        #
+        # f.write("\n\nTotal average,Average of maximums\n")
+        # f.write(str(average_total)+","+str(average_max))
+        f.close()
+
+    except Exception, e:
+        print e.message
 
 
 def scadMRValidation(algorithm, isPython=False, verbose=True):
@@ -324,7 +488,7 @@ def scad_propseg_validation(folder_input, contrast):
 
 
 def check_dices(folder_input, contrast):
-    from sct_scad import ind2sub
+    from sct_get_centerline import ind2sub
     import time
     import math
     import numpy
@@ -439,6 +603,12 @@ if __name__ == "__main__":
         contrast = script_arguments[script_arguments.index("-t") + 1]
         if folder != "" or folder is not None:
             check_dices(folder, contrast)
+    if '-approx' in script_arguments:
+        folder = script_arguments[script_arguments.index("-i") + 1]
+        contrast = script_arguments[script_arguments.index("-t") + 1]
+        contrast_dir = script_arguments[script_arguments.index("-c") + 1]
+        if folder != "" or folder is not None:
+            approx_validation(folder,contrast_dir, contrast)
     # elif len(script_arguments) > 3:
     #     print 'ERROR: this script only accepts three arguments: the name of your algorithm, if it is a python script or' \
     #           'not and the verbose option.'

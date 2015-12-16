@@ -774,7 +774,7 @@ class SymmetryDetector(Algorithm):
 
 
 class SCAD(Algorithm):
-    def __init__(self, input_image, contrast=None, verbose=1, rm_tmp_file=0,output_filename=None, debug=0, vesselness_provided=0, minimum_path_exponent=100, enable_symmetry=0, symmetry_exponent=0, spinalcord_radius = 3, smooth_vesselness = 0):
+    def __init__(self, input_image, contrast=None, verbose=1, rm_tmp_file=0,output_filename=None, debug=0, vesselness_provided=0, minimum_path_exponent=100, enable_symmetry=0, symmetry_exponent=0, spinalcord_radius = 3, smooth_vesselness = 0, vesselness_contrast = 't1'):
         """
         Constructor for the automatic spinal cord detection
         :param output_filename: Name of the result file of the centerline detection. Must contain the extension (.nii / .nii.gz)
@@ -816,7 +816,7 @@ class SCAD(Algorithm):
         self.smoothed_min_path = None
         self.spine_detect_data = None
         self.centerline_with_outliers = None
-        self.vesselness_contrast = ''
+        self.vesselness_contrast = vesselness_contrast
 
         self.debug_folder = None
         self.path_tmp = None
@@ -990,7 +990,7 @@ class SCAD(Algorithm):
             img.file_name = "raw_smooth"
             img.change_orientation(self.raw_orientation)
             img.save()
-            self.vesselness_contrast = "t1"
+            # self.vesselness_contrast = "t1"
 
         # vesselness filter
         if not self.vesselness_provided:
@@ -1068,7 +1068,7 @@ class SCAD(Algorithm):
             img.file_name = "approx_centerline"
             img.save()
             img.change_orientation()
-            sct.run('sct_orientation -i approx_centerline.nii.gz -s RPI -o approx_centerline_RPI.nii.gz')
+            sct.run('sct_image -setorient RPI -i approx_centerline.nii.gz -o approx_centerline_RPI.nii.gz')
             sct.run('sct_create_mask -i approx_centerline_RPI.nii.gz -o centerline_mask.nii.gz -m centerline,approx_centerline_RPI.nii.gz -f box -s '+str(x_pix_mask))
             self.output_debug_file(img, Image('centerline_mask.nii.gz').data, "centerline_mask_debug")
             img = Image('raw.nii')
