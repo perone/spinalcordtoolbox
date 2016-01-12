@@ -804,7 +804,7 @@ class SCAD(Algorithm):
         self.enable_symmetry = enable_symmetry
         self.symmetry_exponent = symmetry_exponent
         self.spinalcord_radius = spinalcord_radius
-        self.smooth_vesselness = smooth_vesselness
+        self.approximation = smooth_vesselness
 
         # attributes used in the algorithm
         self.raw_orientation = None
@@ -979,9 +979,10 @@ class SCAD(Algorithm):
             self.output_debug_file(img, self.raw_symmetry, "body_symmetry")
             img.change_orientation()
 
-        if self.smooth_vesselness:
+        if self.approximation:
             from msct_image import change_data_orientation
-            img.data = gaussian_filter(img.data, [5,5, 1])
+            nx, ny, nz, nt, px, py, pz, pt = img.dim
+            img.data = gaussian_filter(img.data, [10/px,10/py, 1])
             self.output_debug_file(img, img.data, "raw_smooth_debug")
             #if self.enable_symmetry:
             #    normalised_symmetry = normalize_array_histogram(self.raw_symmetry)
@@ -1056,7 +1057,7 @@ class SCAD(Algorithm):
 
         self.output_debug_file(img, img.data, "centerline")
 
-        if self.smooth_vesselness:
+        if self.approximation:
 
             # Put code after approx here
             # 1. we want a mask around the centerline :
@@ -1079,7 +1080,7 @@ class SCAD(Algorithm):
             self.output_debug_file(img, img.data, "approx_cropped")
             self.input_image = Image('approx_cropped.nii')
             self.input_image.data = gaussian_filter(self.input_image.data, [2,2, 0])
-            self.smooth_vesselness = 0
+            self.approximation = 0
             self.execute()
 
         else:
@@ -1155,9 +1156,9 @@ def get_parser():
                       mandatory=False,
                       default_value="4",
                       example="4")
-    parser.add_option(name="-smooth_vesselness",
+    parser.add_option(name="-ap",
                       type_value="multiple_choice",
-                      description="Smoothing of the vesselness image",
+                      description="Approximate the position of the centerline and crop a 3 cm mask around the approximation.",
                       mandatory=False,
                       default_value="0",
                       example=['0', '1'])
@@ -1258,8 +1259,8 @@ if __name__ == "__main__":
             scad.symmetry_exponent = int(arguments["-sym_exp"])
         if "-radius" in arguments:
             scad.spinalcord_radius = int(arguments["-radius"])
-        if "-smooth_vesselness" in arguments:
-            scad.smooth_vesselness = int(arguments["-smooth_vesselness"])
+        if "-ap" in arguments:
+            scad.approximation = int(arguments["-approximation"])
         if "-v" in arguments:
             scad.verbose = int(arguments["-v"])
         scad.execute()
