@@ -1,12 +1,11 @@
 # CHANGES TO RELEASE
 
-##2.1 (TBD)
+##2.1 (2015-12-01)
 - NEW: **sct_testing**: test SCT functions and their integrity
 - NEW: **sct_maths**: performs basic operations on images. Similar to fslmaths.
 - NEW: **sct_get_centerline -method auto**: uses advanced image processing methods for finding the spinal cord centerline automatically on any type of contrast. This script should be followed by sct_propseg for finer cord segmentation.
 - NEW: **sct_label_vertebrae**: can automatically label vertebral levels given an anatomical scan, a centerline and few prior info.
 - NEW: **sct_segment_graymatter**: segment spinal cord gray matter using multi-atlas approach from Asman et al.
-- NEW: **sct_register_graymatter**: improve registration to the template using gray matter segmentation
 - NEW: **sct_process_segmentation**: feature to estimate CSA based on labels
 - NEW: **sct_label_utils**: new functionality for creating labels based on vertebral labeling
 - NEW: added "-qc" flag to some functions to output png images for quality control.
@@ -16,6 +15,17 @@
 - INST: no more dependence with c3d
 - OPT: **sct_straighten_spinalcord**: improved accuracy (issues #371, #425, #452, #472)
 - OPT: **sct_registration_to_template**: improved accuracy
+- REF: harmonization of flags. Most flags from v2.0 still work but a message of deprecation is sent.
+
+##2.1_beta21 (2015-11-30)
+- **sct_process_segmentation**: fixed issue with computation of volume based on vertebral level (slice selection now using centerline)
+
+##2.1_beta20 (2015-11-30)
+- fixed compatibility with new PAM50 template
+
+##2.1_beta19 (2015-11-25)
+- harmonized flags
+- **sct_process_segmentation**: now computes volume
 
 ##2.0.6 (2015-06-30)
 - BUG: **sct_process_segmentation**: fixed bug of output file location (issue #395)
