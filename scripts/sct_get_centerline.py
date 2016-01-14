@@ -751,26 +751,47 @@ class SymmetryDetector(Algorithm):
         raw_orientation = img.change_orientation()
         data = np.squeeze(img.data)
         dim = data.shape
-        section_length = dim[1]/self.nb_sections
+
 
         result = np.zeros(dim)
 
-        for i in range(0, self.nb_sections):
-            if (i+1)*section_length > dim[1]:
-                y_length = (i+1)*section_length - ((i+1)*section_length - dim[1])
-                result[:, i*section_length:i*section_length + y_length, :] = symmetry_detector_right_left(data[:, i*section_length:i*section_length + y_length, :],  cropped_xy=self.crop_xy)
-            sym = symmetry_detector_right_left(data[:, i*section_length:(i+1)*section_length, :], cropped_xy=self.crop_xy)
-            result[:, i*section_length:(i+1)*section_length, :] = sym
+        if self.direction == 'lr':
+            section_length = dim[1]/self.nb_sections
+            for i in range(0, self.nb_sections):
+                if (i+1)*section_length > dim[1]:
+                    y_length = (i+1)*section_length - ((i+1)*section_length - dim[1])
+                    result[:, i*section_length:i*section_length + y_length, :] = symmetry_detector_right_left(data[:, i*section_length:i*section_length + y_length, :],  cropped_xy=self.crop_xy)
+                sym = symmetry_detector_right_left(data[:, i*section_length:(i+1)*section_length, :], cropped_xy=self.crop_xy)
+                result[:, i*section_length:(i+1)*section_length, :] = sym
 
-        result_image = Image(img)
-        if len(result_image.data) == 4:
-            result_image.data = result[:,:,:,np.newaxis]
-        else:
-            result_image.data = result
+            result_image = Image(img)
+            if len(result_image.data) == 4:
+                result_image.data = result[:,:,:,np.newaxis]
+            else:
+                result_image.data = result
 
-        result_image.change_orientation(raw_orientation)
+            result_image.change_orientation(raw_orientation)
 
-        return result_image.data
+            return result_image.data
+
+        elif self.direction == 'ap':
+            section_length = dim[0]/self.nb_sections
+            for i in range(0, self.nb_sections):
+                if (i+1)*section_length > dim[0]:
+                    y_length = (i+1)*section_length - ((i+1)*section_length - dim[0])
+                    result[:, i*section_length:i*section_length + y_length, :] = symmetry_detector_right_left(data[:, i*section_length:i*section_length + y_length, :],  cropped_xy=self.crop_xy)
+                sym = symmetry_detector_right_left(data[:, i*section_length:(i+1)*section_length, :], cropped_xy=self.crop_xy)
+                result[:, i*section_length:(i+1)*section_length, :] = sym
+
+            result_image = Image(img)
+            if len(result_image.data) == 4:
+                result_image.data = result[:,:,:,np.newaxis]
+            else:
+                result_image.data = result
+
+            result_image.change_orientation(raw_orientation)
+
+            return result_image.data
 
 
 class SCAD(Algorithm):
