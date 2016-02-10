@@ -214,7 +214,6 @@ def main(args=None):
     printv('fslview '+fname_in+' '+fname_out+' -l Random-Rainbow -t 0.5 &\n', verbose, 'info')
 
 
-
 # Detect vertebral levels
 # ==========================================================================================
 def vertebral_detection(fname, fname_seg, init_disc, verbose):
