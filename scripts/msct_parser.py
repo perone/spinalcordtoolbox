@@ -78,7 +78,7 @@
 #########################################################################################
 
 import sct_utils as sct
-from msct_types import Coordinate # useful for Coordinate
+from msct_types import *
 
 ########################################################################################################################
 ####### OPTION
@@ -199,6 +199,7 @@ class Option:
         sct.printv("Check file existence...", 0)
         nii = False
         niigz = False
+        viewer = False
         param_tmp = str()
         if param.lower().endswith('.nii'):
             if self.parser.check_file_exist:
@@ -216,6 +217,9 @@ class Option:
                 nii, niigz = False, True
             param_tmp = param[:-7]
             pass
+        elif param.lower() == "viewer":
+            viewer = True
+            pass
         else:
             sct.printv("ERROR: File is not a NIFTI image file. Exiting", type='error')
 
@@ -223,6 +227,8 @@ class Option:
             return param_tmp+'.nii'
         elif niigz:
             return param_tmp+'.nii.gz'
+        elif viewer:
+            return param
         else:
             sct.printv("ERROR: File "+param+" does not exist. Exiting", type='error')
 
@@ -277,7 +283,7 @@ class Parser:
 
         # check if help is asked by the user
         if "-h" in arguments:
-            print self.usage.generate()
+            print(self.usage.generate())
             exit(1)
 
         if "-sf" in arguments:
@@ -306,7 +312,7 @@ class Parser:
                     temp_str = arguments[index]
                     index_temp = index
                     if index_temp < len(arguments)-1:
-                        if arguments[index] == '"':
+                        if arguments[index][0] == '"':
                             while arguments[index_temp + 1][-1] != '"':  # loop until we find a double quote. Then concatenate.
                                 temp_str += ' ' + arguments[index_temp + 1]
                                 index_temp += 1
@@ -321,7 +327,8 @@ class Parser:
                                 if index_temp >= len(arguments)-1:
                                     break
                     index_next = index_temp+1
-                    arguments_temp.append(temp_str)
+                    if '"' not in temp_str:
+                        arguments_temp.append(temp_str)
         arguments = arguments_temp
 
         skip = False
@@ -452,7 +459,6 @@ Version: """ + str(self.get_sct_version())
 
     def get_sct_version(self):
         from commands import getstatusoutput
-        from os.path import basename
         status, path_sct = getstatusoutput('echo $SCT_DIR')
         fname = str(path_sct)+'/version.txt'
         content = ""
@@ -525,8 +531,7 @@ Version: """ + str(self.get_sct_version())
         self.example = '\n\nEXAMPLE\n' + \
             basename(self.file)
         sorted_arguments = sorted(self.arguments.items(), key=lambda x: x[1].order)
-        mandatory = [opt[0] for opt in sorted_arguments if self.arguments[opt[0]].mandatory]
-        for opt in [opt[0] for opt in sorted_arguments if (self.arguments[opt[0]].example)]:
+        for opt in [opt[0] for opt in sorted_arguments if self.arguments[opt[0]].example and not self.arguments[opt[0]].deprecated_by]:
             if type(self.arguments[opt].example) is list:
                 self.example += ' ' + opt + ' ' + str(self.arguments[opt].example[0])
             else:

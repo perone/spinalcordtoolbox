@@ -9,6 +9,36 @@
 #
 # About the license: see the file LICENSE.TXT
 #########################################################################################
+
+'''
+INFORMATION:
+The model used in this function is compound of:
+  - a dictionary of WM/GM contrasted images with their manual segmentations
+  - a PCA representing ths dictionary (ie. eigenvectors and eigenvalues)
+  - a parameter value
+  - an information file indicating which parameters were used to construct this model
+
+A constructed model is provided in the toolbox here: $PATH_SCT/data/gm_model.
+It's made from T2* images of 37 subjects and computed with the parameters that gives the best gray matter segmentation results.
+However you can compute you own model with your own data or with other parameters and use it to segment gray matter by using  the flag -model path_new_gm_model/.
+
+To do so, you should have a folder (path_to_dataset/) containing for each subject (with a folder per subject):
+        - a WM/GM contrasted image (for ex T2*-w) containing 'im' in its name
+        - a segmentation of the spinal cord containing 'seg' in its name
+        - a manual segmentation of the gray matter containing 'gm' in its name
+        - a 'level image' containing 'level' in its name : the level image is an image containing a level label per slice indicating at wich vertebral level correspond this slice (usually obtained by registering the MNI-Poly-AMU template to the WM/GM contrasted image).
+
+Use the following command lines :
+# Preprocess the data
+msct_gmseg_utils -preprocess path_to_dataset/
+
+# Compute the model
+msct_multi_atlas_seg -model path_to_dataset_by_slice/ -todo-model compute
+
+Then use the folder gm_model/ (output from msct_multiatlas_seg) in this function the flag -model gm_model/
+
+'''
+
 import sct_utils as sct
 import os
 import time
@@ -19,7 +49,7 @@ from msct_image import Image, get_dimension
 import random
 from msct_multiatlas_seg import ModelParam, Model, SegmentationParam, SupervisedSegmentationMethod
 from msct_gmseg_utils import *
-from sct_image import set_orientation, get_orientation, orientation,pad_image
+from sct_image import set_orientation, get_orientation_3d, orientation,pad_image
 import shutil
 
 
@@ -40,18 +70,25 @@ def get_parser():
                       example='sc_seg.nii.gz')
     parser.usage.addSection('STRONGLY RECOMMENDED ARGUMENTS\n'
                             'Choose one of them')
-    parser.add_option(name="-vert",
+    parser.add_option(name="-vertfile",
                       type_value="file",
-                      description="Image containing level labels for the target"
-                                  "If -l is used, no need to provide t2 data",
+                      description="Image containing level labels for the target or text file with for eac slice, #slice and associated level separated by a coma."
+                                  "If -vert is used, no need to provide t2 data",
                       mandatory=False,
                       example='MNI-Poly-AMU_level_IRP.nii.gz')
+    parser.add_option(name="-vert",
+                      type_value="file",
+                      description="Image containing level labels for the target or text file with for eac slice, #slice and associated level separated by a coma."
+                                  "If -vert is used, no need to provide t2 data",
+                      mandatory=False,
+                      example='MNI-Poly-AMU_level_IRP.nii.gz',
+                      deprecated_by='-vertfile')
     parser.add_option(name="-l",
                       type_value=None,
                       description="Image containing level labels for the target"
                                   "If -l is used, no need to provide t2 data",
                       mandatory=False,
-                      deprecated_by='-vert')
+                      deprecated_by='-vertfile')
     parser.add_option(name="-t2",
                       type_value=[[','], 'file'],
                       description="T2 data associated to the input image : used to register the template on the T2star and get the vertebral levels\n"
@@ -62,16 +99,28 @@ def get_parser():
     parser.usage.addSection('SEGMENTATION OPTIONS')
     parser.add_option(name="-use-levels",
                       type_value='multiple_choice',
-                      description="Use the level information for the model or not",
+                      description="Use the level information as integers or float numbers for the model or not",
                       mandatory=False,
-                      default_value=1,
-                      example=['0', '1'])
+                      default_value='int',
+                      example=['0', 'int', 'float'])
     parser.add_option(name="-weight",
                       type_value='float',
                       description="weight parameter on the level differences to compute the similarities (beta)",
                       mandatory=False,
                       default_value=2.5,
                       example=2.0)
+    parser.add_option(name="-weight-similarity",
+                      type_value='multiple_choice',
+                      description="Use the modes eigenvalues as weight for the similarity beta",
+                      mandatory=False,
+                      default_value=0,
+                      example=['0', '1'])
+    parser.add_option(name="-weight-label-fusion",
+                      type_value='multiple_choice',
+                      description="Use the similarity beta as weight for the label fusion",
+                      mandatory=False,
+                      default_value=0,
+                      example=['0', '1'])
     parser.add_option(name="-denoising",
                       type_value='multiple_choice',
                       description="1: Adaptative denoising from F. Coupe algorithm, 0: no  WARNING: It affects the model you should use (if denoising is applied to the target, the model should have been coputed with denoising too",
@@ -92,6 +141,12 @@ def get_parser():
                       mandatory=False,
                       default_value=None,
                       example=["450,540"])
+    parser.add_option(name="-k",
+                      type_value='float',
+                      description="Percentage of variability explained by the kept eigen vectors in the PCA (between 0 and 1)",
+                      mandatory=False,
+                      default_value=0.8,
+                      example=0.6)
     parser.add_option(name="-model",
                       type_value="folder",
                       description="Path to the model data",
@@ -160,14 +215,16 @@ class Preprocessing:
 
         self.tmp_dir = tmp_dir
         self.denoising = denoising
+        self.high_res = False
 
         if level_fname is not None:
             t2_data = None
-            level_fname_nii = check_file_to_niigz(level_fname)
-            if level_fname_nii:
-                path_level, file_level, ext_level = sct.extract_fname(level_fname_nii)
-                self.fname_level = file_level + ext_level
-                sct.run('cp ' + level_fname_nii + ' ' + tmp_dir + '/' + self.fname_level)
+            path_level, file_level, ext_level = sct.extract_fname(level_fname)
+            if ext_level != '.txt':
+                level_fname = check_file_to_niigz(level_fname)
+            path_level, file_level, ext_level = sct.extract_fname(level_fname)
+            self.fname_level = file_level + ext_level
+            sct.run('cp ' + level_fname + ' ' + tmp_dir + '/' + self.fname_level)
         else:
             self.fname_level  = None
 
@@ -208,6 +265,15 @@ class Preprocessing:
         self.original_py = pix_dim[index_y]
 
         if round(self.original_px, 2) != self.resample_to or round(self.original_py, 2) != self.resample_to:
+            if round(self.original_px, 2) < self.resample_to or round(self.original_py, 2) < self.resample_to:
+                sct.printv('\n\n-----------------------------------------------------------------------------------------'
+                '\nWARNING: the in-plane resolution of the input image is higher than the resolution of the model images (0.3x0.3mm). '
+                'The size of the result images might be different than the original image and an extra post-processing will be added.'
+                'This post-processing can be time consuming and can slow down your computer. '
+                'To avoid this, please resample your input image to an axial resolution of 0.3x0.3mm.'
+                '\n-----------------------------------------------------------------------------------------', self.verbose, 'warning')
+                self.high_res = True
+
             self.t2star = resample_image(self.original_target, npx=self.resample_to, npy=self.resample_to)
             self.sc_seg = resample_image(self.original_sc_seg, binary=True, npx=self.resample_to, npy=self.resample_to)
 
@@ -246,8 +312,8 @@ class Preprocessing:
 
         if self.t2 is not None:
             self.fname_level = compute_level_file(self.t2star, self.sc_seg, self.t2, self.t2_seg, self.t2_landmarks)
-        elif self.fname_level is not None:
-            level_orientation = get_orientation(self.fname_level, filename=True)
+        elif self.fname_level is not None and sct.extract_fname(self.fname_level)[2] == '.nii.gz':
+            level_orientation = get_orientation_3d(self.fname_level, filename=True)
             if level_orientation != 'IRP':
                 self.fname_level = set_orientation(self.fname_level, 'IRP', filename=True)
 
@@ -261,14 +327,18 @@ class FullGmSegmentation:
         self.seg_param = seg_param
         sct.printv('\nBuilding the appearance model...', verbose=self.seg_param.verbose, type='normal')
         if model is None:
-            self.model = Model(model_param=self.model_param, k=0.8)
+            self.model = Model(model_param=self.model_param)
         else:
             self.model = model
         self.target_fname = check_file_to_niigz(target_fname)
         self.sc_seg_fname = check_file_to_niigz(sc_seg_fname)
         self.t2_data = t2_data
         if level_fname is not None:
-            self.level_fname = check_file_to_niigz(level_fname)
+            level_path, level_file, level_ext = sct.extract_fname(level_fname)
+            if level_ext == '.txt':
+                self.level_fname = level_fname
+            else:
+                self.level_fname = check_file_to_niigz(level_fname)
         else:
             self.level_fname = level_fname
 
@@ -374,7 +444,12 @@ class FullGmSegmentation:
                 bin = True
             else:
                 bin = False
+
             old_res_name = resample_image(res_fname_original_space+ext, npx=self.preprocessed.original_px, npy=self.preprocessed.original_py, binary=bin)
+            if self.preprocessed.high_res:
+                old_res_name_correct_space = sct.extract_fname(old_res_name)[1]+'_correct_spacing'+ext
+                sct.run('sct_register_multimodal -i '+old_res_name+' -d ../'+self.target_fname+' -identity 1 -o '+old_res_name_correct_space)
+                old_res_name = old_res_name_correct_space
 
             if self.seg_param.res_type == 'prob':
                 # sct.run('fslmaths ' + old_res_name + ' -thr 0.05 ' + old_res_name)
@@ -563,18 +638,24 @@ if __name__ == "__main__":
 
         if "-t2" in arguments:
             input_t2_data = arguments["-t2"]
-        if "-vert" in arguments:
-            input_level_fname = arguments["-vert"]
+        if "-vertfile" in arguments:
+            input_level_fname = arguments["-vertfile"]
         if "-use-levels" in arguments:
-            model_param.use_levels = bool(int(arguments["-use-levels"]))
+            model_param.use_levels = arguments["-use-levels"]
         if "-weight" in arguments:
             model_param.weight_gamma = arguments["-weight"]
+        if "-weight-similarity" in arguments:
+            model_param.mode_weight_similarity = bool(int(arguments["-weight-similarity"]))
+        if "-weight-label-fusion" in arguments:
+            model_param.weight_label_fusion = bool(int(arguments["-weight-label-fusion"]))
         if "-denoising" in arguments:
             seg_param.target_denoising = bool(int(arguments["-denoising"]))
         if "-normalize" in arguments:
             seg_param.target_normalization = bool(int(arguments["-normalize"]))
         if "-means" in arguments:
             seg_param.target_means = arguments["-means"]
+        if "-k" in arguments:
+            model_param.k = arguments["-k"]
         if "-ratio" in arguments:
             if arguments["-ratio"] == '0':
                 compute_ratio = False
