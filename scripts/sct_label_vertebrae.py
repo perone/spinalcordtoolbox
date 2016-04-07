@@ -15,14 +15,13 @@
 
 # from msct_base_classes import BaseScript
 import sys
+
 from os import chdir
-from time import strftime
 import numpy as np
 from scipy.signal import argrelextrema, gaussian
-from sct_utils import extract_fname, printv, run, generate_output_file, slash_at_the_end
+from sct_utils import extract_fname, printv, run, generate_output_file, tmp_create
 from msct_parser import Parser
 from msct_image import Image
-from scipy.optimize import minimize
 import scipy.optimize as spo
 
 
@@ -63,6 +62,11 @@ def get_parser():
                       mandatory=False,
                       default_value='',
                       example='t2_seg_labeled.nii.gz')
+    parser.add_option(name="-ofolder",
+                      type_value="folder_creation",
+                      description="Output folder.",
+                      mandatory=False,
+                      default_value='')
     parser.add_option(name="-denoise",
                       type_value="multiple_choice",
                       description="Apply denoising filter to the data. Sometimes denoising is too aggressive, so use with care.",
@@ -113,9 +117,13 @@ def main(args=None):
     fname_seg = arguments['-s']
     # contrast = arguments['-t']
     if '-o' in arguments:
-        fname_out = arguments["-o"]
+        file_out = arguments["-o"]
     else:
-        fname_out = ''
+        file_out = ''
+    if '-ofolder' in arguments:
+        path_output = arguments['-ofolder']
+    else:
+        path_output = ''
     if '-initz' in arguments:
         initz = arguments['-initz']
     if '-initcenter' in arguments:
@@ -127,8 +135,7 @@ def main(args=None):
 
     # create temporary folder
     printv('\nCreate temporary folder...', verbose)
-    path_tmp = slash_at_the_end('tmp.'+strftime("%y%m%d%H%M%S"), 1)
-    run('mkdir '+path_tmp, verbose)
+    path_tmp = tmp_create(verbose=verbose)
 
     # Copying input data to tmp folder
     printv('\nCopying input data to tmp folder...', verbose)
@@ -195,17 +202,17 @@ def main(args=None):
     printv('\nClean labeled segmentation (correct interpolation errors)...', verbose)
     clean_labeled_segmentation('segmentation_labeled.nii.gz', 'segmentation.nii.gz', 'segmentation_labeled.nii.gz')
 
-    # Build fname_out
-    if fname_out == '':
+    # Build file_out
+    if file_out == '':
         path_seg, file_seg, ext_seg = extract_fname(fname_seg)
-        fname_out = path_seg+file_seg+'_labeled'+ext_seg
+        file_out = file_seg+'_labeled'+ext_seg
 
     # come back to parent folder
     chdir('..')
 
     # Generate output files
     printv('\nGenerate output files...', verbose)
-    generate_output_file(path_tmp+'segmentation_labeled.nii.gz', fname_out)
+    generate_output_file(path_tmp+'segmentation_labeled.nii.gz', path_output+file_out)
 
     # Remove temporary files
     if remove_tmp_files == 1:
@@ -214,7 +221,9 @@ def main(args=None):
 
     # to view results
     printv('\nDone! To view results, type:', verbose)
-    printv('fslview '+fname_in+' '+fname_out+' -l Random-Rainbow -t 0.5 &\n', verbose, 'info')
+    printv('fslview '+fname_in+' '+path_output+file_out+' -l Random-Rainbow -t 0.5 &\n', verbose, 'info')
+
+
 
 # Detect vertebral levels
 # ==========================================================================================
@@ -257,9 +266,11 @@ def vertebral_detection(fname, fname_seg, init_disc, verbose):
     # Compute intensity profile across vertebrae
     #==================================================
 
-    shift_AP = shift_AP * py
-    size_AP = size_AP * py
-    size_RL = size_RL * px
+    # convert mm to voxel index
+    shift_AP = int(round(shift_AP / py))
+    size_AP = int(round(size_AP / py))
+    size_RL = int(round(size_RL / px))
+    size_IS = int(round(size_IS / pz))
 
     # define z: vector of indices along spine
     z = range(nz)
