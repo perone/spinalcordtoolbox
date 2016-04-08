@@ -18,7 +18,7 @@ import sys
 
 from os import chdir
 import numpy as np
-from scipy.signal import argrelextrema, gaussian
+from scipy.signal import argrelextrema, gaussian, find_peaks_cwt
 from sct_utils import extract_fname, printv, run, generate_output_file, tmp_create
 from msct_parser import Parser
 from msct_image import Image
@@ -218,7 +218,7 @@ def main(args=None):
     if remove_tmp_files == 1:
         printv('\nRemove temporary files...', verbose)
         run('rm -rf '+path_tmp)
-
+    
     # to view results
     printv('\nDone! To view results, type:', verbose)
     printv('fslview '+fname_in+' '+path_output+file_out+' -l Random-Rainbow -t 0.5 &\n', verbose, 'info')
@@ -234,12 +234,8 @@ def vertebral_detection(fname, fname_seg, init_disc, verbose):
     size_RL = 7  # window size in RL direction (=x) in mm
     size_IS = 7  # window size in IS direction (=z) in mm
     searching_window_for_maximum = 5  # size used for finding local maxima
-    thr_corr = 0.2  # disc correlation threshold. Below this value, prefer template distance.
     # gaussian_std_factor = 5  # the larger, the more weighting towards central value. This value is arbitrary-- should adjust based on large dataset
     fig_anat_straight = 1 # handle for figure
-    fig_anat_straight_labeled = 1 # handle for figure
-    fig_pattern = 2  # handle for figure
-    fig_corr = 3  # handle for figure
     # define mean distance between adjacent discs: C1/C2 -> C2/C3, C2/C3 -> C4/C5, ..., L1/L2 -> L2/L3.
     mean_distance = np.array([18, 16, 17.0000, 16.0000, 15.1667, 15.3333, 15.8333,   18.1667,   18.6667,   18.6667,
     19.8333,   20.6667,   21.6667,   22.3333,   23.8333,   24.1667,   26.0000,   28.6667,   30.5000,   33.5000,
@@ -325,6 +321,20 @@ def vertebral_detection(fname, fname_seg, init_disc, verbose):
     # adjust current_disc for positions beginning at 0
     current_disc_adj = current_disc - 1
 
+    # adjust template based on dimensions around specified disc
+    z_corr_max_approx = np.asarray(find_peaks_cwt(correlation_profile, np.arange(1, 10)))
+    if len(z_corr_max_approx) > 0:
+        # get position of initialized disc in z_corr_max_approx
+        new_current_disc = np.abs(z_corr_max_approx-current_z).argmin()
+        # calculate correcting factor
+        if (z_corr_max_approx[new_current_disc+1]-z_corr_max_approx[new_current_disc]) > 2:
+            correcting_factor_template = (z_corr_max_approx[new_current_disc+1]-z_corr_max_approx[new_current_disc]) / mean_distance[current_disc_adj]
+        elif (z_corr_max_approx[new_current_disc]-z_corr_max_approx[new_current_disc-1]) > 2:
+            correcting_factor_template = (z_corr_max_approx[new_current_disc]-z_corr_max_approx[new_current_disc-1]) / mean_distance[current_disc_adj-1]
+        else:
+            correcting_factor_template = 1
+        mean_distance = correcting_factor_template * mean_distance
+
     # calculate distance from initialized disc based on template
     mean_distance_from_init_disc = np.zeros(len(mean_distance)+1)
     for idistance in range(0, len(mean_distance_from_init_disc)):
@@ -347,9 +357,9 @@ def vertebral_detection(fname, fname_seg, init_disc, verbose):
     for ind_dist in range(0, len(mean_distance_from_init_disc)):
         if ind_dist<len(mean_distance_from_init_disc)-current_disc_adj:
             if mean_distance_from_init_disc[ind_dist]+current_z<=0:
-                ind_inf=ind_inf+1
+                ind_inf = ind_inf+1
             else:
-                ind_inf=ind_inf
+                ind_inf = ind_inf
         else:
             if mean_distance_from_init_disc[ind_dist]+current_z>nz:
                 ind_sup = ind_sup
@@ -359,10 +369,11 @@ def vertebral_detection(fname, fname_seg, init_disc, verbose):
     # cut mean_distance_from_init_disc
     mean_distance_from_init_disc_append = mean_distance_from_init_disc[ind_inf:ind_sup]
 
-    # find z where correlation is maximum around position predicted by template
+    # find z where correlation is maximum in specified window
     mean_distance_from_z0 = mean_distance_from_init_disc_append + current_z
     z_corr_max = np.zeros(len(mean_distance_from_z0))
     for ind_dist in range(0, len(mean_distance_from_z0)):
+        # set window dimensions
         if ind_dist == 0:
             lowerlim = 0
             upperlim = int(round(0.5*(mean_distance_from_z0[ind_dist+1]-mean_distance_from_z0[ind_dist])+mean_distance_from_z0[ind_dist]))
@@ -376,7 +387,9 @@ def vertebral_detection(fname, fname_seg, init_disc, verbose):
             lowerlim = 0
         if upperlim > len(correlation_profile)-1:
             upperlim = len(correlation_profile)-1
+        # get correlation profile in specified window
         correlation_profile_window = correlation_profile[lowerlim:upperlim]
+        # find z where correlation is maximum
         z_corr_max[ind_dist] = np.argmax(correlation_profile_window)+lowerlim
 
     # initial guess for adjustment in z
@@ -386,28 +399,24 @@ def vertebral_detection(fname, fname_seg, init_disc, verbose):
                                     minimizer_kwargs={"args": (z_corr_max, mean_distance_from_init_disc_append, correlation_profile, nz, current_disc_adj)},
                                     stepsize=1)
     z_adjustment = optimization.x.astype(int)
-
+    
+    # calculate positions of discs after optimization
     z_disc_real = np.rint(z_adjustment + z_corr_max + 1)
+    # correct if guessed too many disks initially
+    diff_z_disc_real = np.diff(z_disc_real)
+    positions_to_cut = np.where(diff_z_disc_real < 5)
+    z_disc_real = np.delete(z_disc_real, positions_to_cut)
+    # find position of specified disk in new z_disc_real
+    current_disc_in_z_disc_real = np.abs(z_disc_real-current_z).argmin()
 
     # create list for z
     list_disc_z = np.zeros(len(z_disc_real))
     list_disc_z = list_disc_z + z_disc_real
 
     # create list for disc
-    disc_inf = len(mean_distance) - ind_sup + 2
-    disc_sup = len(mean_distance) - (ind_inf + 1) + 2
+    disc_inf = current_disc - (len(z_disc_real)-1 - current_disc_in_z_disc_real)
+    disc_sup = current_disc + current_disc_in_z_disc_real
     list_disc_value = np.linspace(disc_sup, disc_inf, num=disc_sup-disc_inf+1)
-
-    # To view image with identified dots
-    # import matplotlib.pyplot as plt
-    # plt.ion()
-    # plt.matshow(np.mean(data[xc-size_RL:xc+size_RL, :, :], axis=0).transpose(), fignum=fig_anat_straight_labeled, cmap=plt.cm.gray, origin='lower')
-    # plt.title('Anatomical image with labels')
-    # plt.autoscale(enable=False)  # to prevent autoscale of axis when displaying plot
-    # plt.figure(fig_anat_straight_labeled), plt.scatter(np.full(len(list_disc_z), yc+shift_AP), list_disc_z, c='y', s=50)
-    # for i_text in range(0, len(list_disc_z)):
-    #     plt.text(yc+shift_AP+4, list_disc_z[i_text], list_disc_value[i_text].astype(str), verticalalignment='center', horizontalalignment='left', color='yellow', fontsize=15), plt.draw()
-    # plt.figure(fig_anat_straight_labeled), plt.savefig('../fig_anat_straight_with_all_labels.png')
 
 
     # LABEL SEGMENTATION
@@ -610,7 +619,7 @@ def get_correlation_sum(z_adjustment, z_corr_max, mean_distance_from_init_disc_a
             else:
                 constraint[i] = abs((index[i] - index[i-1]) - (mean_distance_from_init_disc_append[i] - mean_distance_from_init_disc_append[i-1]))
     # function to minimize
-    result = -np.sum(correlation_values - np.multiply(1.3-correlation_values, constraint))
+    result = -np.sum(correlation_values - np.multiply(1-correlation_values, constraint))
     return result
 
 
