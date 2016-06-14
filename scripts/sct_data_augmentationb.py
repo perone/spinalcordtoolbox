@@ -90,7 +90,7 @@ def main():
     fname_size_y = arguments['-ly']
     nbre_slice = arguments['-nb']
     nbre_wrap = arguments['-nw']
-    if '-o' in arguments['-o']:
+    if '-o' in arguments:
         output_folder = arguments['-o']
         os.makedirs(str(output_folder))
         output_folder_path = str(output_folder) + "/"
@@ -241,7 +241,7 @@ def random_slice(fname, fname_seg, fname_size_x, fname_size_y):
     im_seg = file + "_crop_seg_" + str(nbre) + "_o0.nii.gz"
     nbre_im = nbre
     while not os.path.isfile(im):
-        sct.run("sct_data_augmentation -i " + "../data_subjects_patients/" + file + ext + " -iseg " + "../data_subjects_patients/" + file_seg + ext_seg + " -lx " + str(fname_size_x) + " -ly " + str(fname_size_y) + " -z " + str(nbre))
+        sct.run("sct_data_augmentation.py -i " + "../data_subjects_patients/" + file + ext + " -iseg " + "../data_subjects_patients/" + file_seg + ext_seg + " -lx " + str(fname_size_x) + " -ly " + str(fname_size_y) + " -z " + str(nbre))
         im = file + "_crop_" + str(nbre) + "_o0.nii.gz"
         im_seg = file + "_crop_seg_" + str(nbre) + "_o0.nii.gz"
         nbre_im = nbre
