@@ -247,9 +247,16 @@ def warping_field(src_seg, dest_seg, nw):
         out = "t2_output_image_transformed.nii.gz"
         out_transfo = 'transfo_' + str(iter)
 
-        sct.run(
-            'isct_antsRegistration ' + '--dimensionality 2 ' + '--transform BSplineSyN[0.5,1,3] ' + '--metric MeanSquares[' + dest_seg[iter] + ',' + src_seg[iter] + ', 1] '
-            + '--convergence 2x5 ' + '--shrink-factors 2x1 ' + '--smoothing-sigmas 1x0mm ' + '--output [' + out_transfo + ','  + out +']' + ' --interpolation BSpline[3] ' + '--verbose 0')
+        sct.run('isct_antsRegistration ' +
+                '--dimensionality 2 ' +
+                '--transform BSplineSyN[0.5,1,3] ' +
+                '--metric MeanSquares[' + dest_seg[iter] + ',' + src_seg[iter] + ', 1] ' +
+                '--convergence 5x3 ' +
+                '--shrink-factors 2x1 ' +
+                '--smoothing-sigmas 1x0mm ' +
+                '--output [transfo_,' + out + '] ' +
+                '--interpolation BSpline[3] ' +
+                '--verbose 0')
 
         warp.append(out_transfo + '0Warp.nii.gz')
 
