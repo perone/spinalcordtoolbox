@@ -149,9 +149,6 @@ def crop_x_y (fname_slice, file_src, path_src, fname_size_x, fname_size_y, nx, n
     start_y = float(cof[1] - fname_size_y/2)
     stop_x = float(cof[0] + fname_size_x/2)
     stop_y = float(cof[1] + fname_size_y/2)
-    sct.printv(str(nx))
-    sct.printv(str(start_x))
-    sct.printv(str(stop_x))
 
     image_slice = Image(fname_slice)
     data_array = np.squeeze(np.asarray(image_slice.data))
@@ -159,35 +156,44 @@ def crop_x_y (fname_slice, file_src, path_src, fname_size_x, fname_size_y, nx, n
     lx_start = 0
     lx_stop = 0
     ly_start = 0
-
+    change_x_s = False
+    change_x_e = False
+    change_y_s = False
+    change_y_e = False
     nx_s, ny_s, nz_s, nt_s, px_s, py_s, pz_s, pt_s = Image(fname_slice_seg).dim
     if start_x < 1:
         lx_start = int(abs(cof[0] - fname_size_x/2)+1)
         z = np.zeros((lx_start, ny))
         zs = np.zeros((lx_start, ny_s))
-        sct.printv(str(np.shape(z)))
         data_array = np.append(z, data_array, axis=0)
         data_array_seg = np.append(zs, data_array_seg, axis=0)
         start_x = 0
+        change_x_s = True
     if stop_x >= nx:
         lx_stop = int(cof[0] + fname_size_x/2 - nx + 1)
-        sct.printv(str(lx_stop))
         z = np.zeros((lx_stop, ny))
         zs = np.zeros((lx_stop, ny_s))
         data_array = np.append(data_array, z, axis=0)
         data_array_seg = np.append(data_array_seg,zs, axis=0)
         stop_x = fname_size_x + start_x
+        change_x_e = True
     if start_y < 1:
         ly_start = int(abs(cof[1] - fname_size_y/2)+1)
         z = np.zeros((nx + lx_start + lx_stop, ly_start))
         data_array = np.append(z, data_array, axis=1)
         data_array_seg = np.append(z, data_array_seg, axis=1)
         start_y = 0
+        change_y_s = True
     if stop_y >= ny:
         ly_stop = int(cof[1] + fname_size_y/2 - ny +1)
         z = np.zeros((nx + lx_start + lx_stop, ly_stop))
         data_array = np.append(data_array, z, axis=1)
         data_array_seg = np.append(data_array_seg, z, axis=1)
+        stop_y = fname_size_y
+        change_y_e = True
+    if change_x_s & (not change_x_e):
+        stop_x = fname_size_x
+    if change_y_s & (not change_y_e):
         stop_y = fname_size_y
 
     sct.printv("Taille de l'image :" + str(np.shape(data_array_seg)))
@@ -200,8 +206,8 @@ def crop_x_y (fname_slice, file_src, path_src, fname_size_x, fname_size_y, nx, n
     image_slice.save()
     image_slice_seg.save()
 
-    sct.run("sct_crop_image -i " + fname_slice_out + " -dim 0,1 -start " + str(start_x) + "," + str(start_y) + " -end " + str(stop_x) + "," + str(stop_y) + " -o " + path_tmp + file_src + "_crop_" + nbre + ".nii.gz", verbose=1)
-    sct.run("sct_crop_image -i " + fname_slice_seg_out + " -dim 0,1 -start " + str(start_x) + "," + str(start_y) + " -end " + str(stop_x) + "," + str(stop_y) + " -o " + path_tmp + file_src + "_crop_seg_" + nbre + ".nii.gz", verbose=1)
+    sct.run("sct_crop_image -i " + fname_slice_out + " -dim 0,1 -start " + str(start_x) + "," + str(start_y) + " -end " + str(stop_x-1) + "," + str(stop_y-1) + " -o " + path_tmp + file_src + "_crop_" + nbre + ".nii.gz", verbose=1)
+    sct.run("sct_crop_image -i " + fname_slice_seg_out + " -dim 0,1 -start " + str(start_x) + "," + str(start_y) + " -end " + str(stop_x-1) + "," + str(stop_y-1) + " -o " + path_tmp + file_src + "_crop_seg_" + nbre + ".nii.gz", verbose=1)
 
     # get the curent folder
     path_out = os.getcwd()
