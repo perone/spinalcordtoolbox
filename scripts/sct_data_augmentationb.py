@@ -127,8 +127,16 @@ def main():
 
         out = "t2_output_image_transformed.nii.gz"
 
-        sct.run( 'isct_antsRegistration ' + '--dimensionality 2 ' + '--transform BSplineSyN[0.5,1,3] ' + '--metric MeanSquares[' + dest_seg + ',' + src_seg + ', 1] '
-                         + '--convergence 2x5 ' + '--shrink-factors 2x1 ' + '--smoothing-sigmas 1x0mm ' + '--output [transfo_,' + out + '] ' + '--interpolation BSpline[3] ' + '--verbose 0')
+        sct.run('isct_antsRegistration ' +
+                '--dimensionality 2 ' +
+                '--transform BSplineSyN[0.5,1,3] ' +
+                '--metric MeanSquares[' + dest_seg + ',' + src_seg + ', 1] ' +
+                '--convergence 5x3 ' +
+                '--shrink-factors 2x1 ' +
+                '--smoothing-sigmas 1x0mm ' +
+                '--output [transfo_,' + out + '] ' +
+                '--interpolation BSpline[3] ' +
+                '--verbose 0')
 
         if '-t' in arguments:
             fname_im = arguments['-t']
