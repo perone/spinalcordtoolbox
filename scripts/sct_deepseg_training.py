@@ -622,16 +622,16 @@ def main(arguments):
 	# jf = os.path.join(arguments['-o'], 'db_sorted.json')
 
 	# ------------  2. Crop image and segmentation around the cord ------------ 	
-	# crop_around_cord(jf, TMP_OUTPUT)
+	crop_around_cord(jf, TMP_OUTPUT)
 
 	# ------------ 5. Train IRS model ------------
-	# train_IRS_model(jf, TMP_OUTPUT)
+	train_IRS_model(jf, TMP_OUTPUT)
 
 	# ------------ 6. Apply IRS model ------------
-	# apply_all_IRS_model(jf, TMP_OUTPUT)
+	apply_all_IRS_model(jf, TMP_OUTPUT)
 
 	# ------------ 7. Make vertebrae levels nifti file ------------
-	# make_vert_nifti(jf, TMP_OUTPUT)
+	make_vert_nifti(jf, TMP_OUTPUT)
 
 	# ------------ 10. QA of data. ------------
 	try:
@@ -642,8 +642,8 @@ def main(arguments):
 	# plot_histograms(jf, TMP_OUTPUT, QC_DIR) 	# <<< Will save as .png image
 
 	# Move files to final destination
-	# FINAL_OUT = os.path.join(arguments['-o'], 'pre_processed')
-	# move_final_files(jf, TMP_OUTPUT, FINAL_OUT)
+	FINAL_OUT = os.path.join(arguments['-o'], 'pre_processed')
+	move_final_files(jf, TMP_OUTPUT, FINAL_OUT)
 	export_org_qc(jf, TMP_OUTPUT, QC_DIR)
 
 	# sct.run('rm -r %s' % TMP_OUTPUT)
