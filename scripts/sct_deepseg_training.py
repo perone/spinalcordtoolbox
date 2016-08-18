@@ -82,15 +82,19 @@ def parse_files(fl):
 	d = {'seg':cord_segs, 'gmseg':gm_segs, 'img':img, 'levels':levels}
 	return d
 
-def add_aug_training_data(outpath):
+def add_aug_training_data(source_dir, out_dir):
 	# First Split up the data in Poly files and Augmented data
-	sct.printv('Parsing the data into json structure', 1, 'info')
-	all_files = os.listdir(outpath)
+	sct.printv('\nParsing the data into json structure', 1, 'info')
+	all_files = os.listdir(source_dir)
+	
+
+
 	subjects = []
 	for f in all_files:
-		if ('_r' not in f) and ('_fl' not in f) and ('seg' not in f) and ('_levels' not in f):
-			sub_name = f.split('.nii')[0]
-			subjects.append(sub_name)
+		if ('.txt' in f) or ('nii' in f):
+			if ('_r' not in f) and ('_fl' not in f) and ('seg' not in f) and ('_levels' not in f):
+				sub_name = f.split('.nii')[0]
+				subjects.append(sub_name)
 
 	data = {}
 	data['challenge'] = {}
@@ -112,7 +116,7 @@ def add_aug_training_data(outpath):
 		
 		# Loop over all the files again
 		for nii in all_files:
-			if sub in nii:
+			if (sub + '_') in nii or (sub + '.') in nii:
 				sub_files.append(nii)
 
 		# Now we have all the images from the same subject.
@@ -166,7 +170,7 @@ def add_aug_training_data(outpath):
 
 		data_sorted[k] = d        
 	 
-	json_path = os.path.join(os.path.join(outpath,'db_sorted.json'))   
+	json_path = os.path.join(os.path.join(out_dir,'db_sorted.json'))   
 	with open(json_path, 'w') as jf:
 		json.dump(data_sorted, jf)  
 	
@@ -184,10 +188,9 @@ def save_json(jdata, fname):
 		json.dump(jdata, jf)
 	return True
 
-# Processing functions
 def train_IRS_model(jf, path):
 	
-	sct.printv('Training Intensity Range Standardization Model on non-augmented data', 1, 'info')
+	sct.printv('\nTraining Intensity Range Standardization Model on non-augmented data', 1, 'info')
 	subdata = open_json(jf)
 
 	all_img_data_list = []
@@ -230,12 +233,12 @@ def apply_all_IRS_model(jf, path):
 	irs_model_file = os.path.join(path, 'irs_model.pkl')
 
 	# -------- Load IRS pickle model ---------- #
-	sct.printv('Loading pickle file with IRS model', 1, 'info')
+	sct.printv('\nLoading pickle file with IRS model', 1, 'info')
 	with open(irs_model_file, 'r') as pf:
 		irs_model = pickle.load(pf)
 
 	# --------- Transform images ------------- #
-	sct.printv('Transforming images with IRS model', 1, 'info')
+	sct.printv('\nTransforming images with IRS model', 1, 'info')
 	for sub in subdata.keys():
 		for s in subdata[sub].keys():
 			in_img = subdata[sub][s]['img']
@@ -262,9 +265,13 @@ def apply_all_IRS_model(jf, path):
 def crop_around_cord(jf, path):
 	
 	subdata = open_json(jf)
-	sct.printv('Cropping image around the spinal cord', 1, 'info')
-
+	sct.printv('\nCropping image around the spinal cord', 1, 'info')
+	n = len(subdata.keys())
+	i = 1
 	for ss in subdata.keys():
+		sys.stdout.write("\rProgress: %s/%s" % (i,n))
+		sys.stdout.flush()
+		i += 1
 		for s in subdata[ss].keys():
 			sub = subdata[ss][s]
 
@@ -274,36 +281,54 @@ def crop_around_cord(jf, path):
 			dilated_seg = 'dilate_' + seg
 			
 			df = 1 # <<<<<<<< Dialation factor. May need to be adjusted
-			cmd = ['fslmaths', os.path.join(path, seg), '-kernel 2D -dilD', os.path.join(path, dilated_seg)]
-			# cmd = ['sct_maths', '-i', os.path.join(path, seg), '-dilate', str(df), '-o', os.path.join(path, dilated_seg)]
-			sct.run(' '.join(cmd))
+			output_path = os.path.join(path, dilated_seg)
+			if not os.path.isfile(output_path):
+				cmd = ['fslmaths', os.path.join(path, seg), '-kernel 2D -dilD', output_path]
+				# cmd = ['sct_maths', '-i', os.path.join(path, seg), '-dilate', str(df), '-o', os.path.join(path, dilated_seg)]
+				sct.run(' '.join(cmd), verbose=0)
 
 			# Now we multiply the image with the dialated seg
 			img = sub['img']
-			out_img = 'cm_' + img
-			cmd = ['sct_maths', '-i', os.path.join(path, img) , '-mul', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_img)]
-			sct.run(' '.join(cmd))
-			img = out_img
+			if not 'cm_' in img:
+				out_img = 'cm_' + img
+				cmd = ['sct_maths', '-i', os.path.join(path, img) , '-mul', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_img)]
+				try:
+					sct.run(' '.join(cmd), verbose=0)
+				except:
+					sct.printv('ERROR running: %s' % (' '.join(cmd)))
+				img = out_img
 
 			# Now we crop the image and all the segmentations using the dialated segmentation
 			out_img = 'cropped_' + img
-			cmd = ['sct_crop_image', '-i', os.path.join(path, img), 
-				'-m', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_img)]
-			sct.run(' '.join(cmd))
-			sub['img'] = out_img
+			if not 'cropped_' in img:
+				cmd = ['sct_crop_image', '-i', os.path.join(path, img), 
+					'-m', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_img)]
+				try:
+					sct.run(' '.join(cmd), verbose=0)
+				except:
+					sct.printv('ERROR running: %s' % (' '.join(cmd)))
+				sub['img'] = out_img
 
 			out_dseg = 'cropped_' + dilated_seg
-			cmd = ['sct_crop_image', '-i', os.path.join(path, dilated_seg), 
-				'-m', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_dseg)]
-			sct.run(' '.join(cmd))
-			sub['dilated_seg'] = out_dseg
+			if 'dialted_seg' not in sub:
+				cmd = ['sct_crop_image', '-i', os.path.join(path, dilated_seg), 
+					'-m', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_dseg)]
+				try:
+					sct.run(' '.join(cmd), verbose=0)
+				except:
+					sct.printv('ERROR running: %s' % (' '.join(cmd)))
+				sub['dilated_seg'] = out_dseg
 
 			new_segs = []
 			for seg in sub['seg']:
 				out_seg = 'cropped_' + seg
-				cmd = ['sct_crop_image', '-i', os.path.join(path, seg), 
-					'-m', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_seg)]
-				sct.run(' '.join(cmd))
+				if 'cropped_' not in seg:
+					cmd = ['sct_crop_image', '-i', os.path.join(path, seg), 
+						'-m', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_seg)]
+					try:
+						sct.run(' '.join(cmd), verbose=0)
+					except:
+						sct.printv('ERROR running: %s' % (' '.join(cmd)))
 				new_segs.append(out_seg)
 			
 			sub['seg'] = new_segs
@@ -311,9 +336,13 @@ def crop_around_cord(jf, path):
 			new_gmsegs = []
 			for gmseg in sub['gmseg']:
 				out_seg = 'cropped_' + gmseg
-				cmd = ['sct_crop_image', '-i', os.path.join(path, gmseg), 
-					'-m', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_seg)]
-				sct.run(' '.join(cmd))
+				if not 'cropped_' in gmseg:
+					cmd = ['sct_crop_image', '-i', os.path.join(path, gmseg), 
+						'-m', os.path.join(path, dilated_seg), '-o', os.path.join(path, out_seg)]
+					try:
+						sct.run(' '.join(cmd), verbose=0)
+					except:
+						sct.printv('ERROR running: %s' % (' '.join(cmd)))
 				new_gmsegs.append(out_seg)
 
 			sub['gmseg'] = new_gmsegs
@@ -322,7 +351,7 @@ def crop_around_cord(jf, path):
 
 def resample(jf, path):
 	# Resample data to 0.3x0.3 in plane resolution
-	sct.printv('Resampling data to common resolution', 1, 'info')
+	sct.printv('\nResampling data to common resolution', 1, 'info')
 	subdata = open_json(jf)
 
 	for s in subdata.keys():
@@ -352,36 +381,65 @@ def resample(jf, path):
 
 	save_json(jdata, jf)
 
-def add_tmp_fname(jf, path):
+def move_training_data(jf, orgpath, newpath):
 
+	sct.printv('\nCopying all data to new directory before pre-processing', 1, 'info')
+
+	verbose = 0
 	subdata = open_json(jf)
+	n = len(subdata.keys())
+	i = 1
 
 	for ss in subdata.keys():
+		sys.stdout.write("\rProgress: %s/%s" % (i,n))
+		sys.stdout.flush()
+		i += 1
 		for s in subdata[ss].keys():
 			sub = subdata[ss][s]
-
 			# Rename all the files
-			new_name  = 'tmp__' + sub['img']
-			# new_name = sct.add_suffix(new_name, '_img')
-			os.rename(os.path.join(path, sub['img']), os.path.join(path, new_name))
-			sub['img'] = new_name
+			if not ('tmp' in sub['img']):
+				new_name  = 'tmp__' + sub['img']
+				new_path = os.path.join(newpath, new_name)
+				sct.run('cp %s %s' % (os.path.join(orgpath, sub['img']), new_path), verbose=verbose)
+				sub['img'] = new_name
+
+			if not ('tmp' in sub['levels']):
+				new_name = 'tmp__' + sub['levels']
+				new_path = os.path.join(newpath, new_name)
+				sct.run('cp %s %s' % (os.path.join(orgpath, sub['levels']), new_path), verbose=verbose)
+				sub['levels'] = new_name
 
 			# Segmentations
 			new_segs = []
 			for s in sub['seg']:
-				new_name = 'tmp__' + s
-				os.rename(os.path.join(path, s), os.path.join(path, new_name))
-				new_segs.append(new_name)
-
+				if not ('tmp' in s):
+					new_name = 'tmp__' + s
+					new_path = os.path.join(newpath, new_name)
+					try:
+						sct.run('cp %s %s' % (os.path.join(orgpath, s), new_path), verbose=verbose)
+						# os.rename(os.path.join(path, s), os.path.join(path, new_name))
+					except:
+						print 'Could not find the file: %s' % os.path.join(orgpath, s)
+					new_segs.append(new_name)
+				else:
+					new_segs.append(s)
 			sub['seg'] = new_segs
 
 			# GM segs
 			new_gmsegs = []
 			for s in sub['gmseg']:
-				new_name = 'tmp__' + s
-				os.rename(os.path.join(path, s), os.path.join(path, new_name))
-				new_gmsegs.append(new_name)
+				if not ('tmp' in s):
+					new_name = 'tmp__' + s
+					new_path = os.path.join(newpath, new_name)
+					try:
+						sct.run('cp %s %s' % (os.path.join(orgpath, s), new_path), verbose=verbose)
+						# os.rename(os.path.join(path, s), os.path.join(path, new_name))
+					except:
+						print 'Could not find the file: %s' % os.path.join(orgpath, s)
+					new_gmsegs.append(new_name)
 
+				else:
+					new_gmsegs.append(s)
 			sub['gmseg'] = new_gmsegs
 
 	save_json(subdata, jf)
@@ -390,7 +448,7 @@ def make_vert_nifti(jf, path):
 
 	subdata = open_json(jf)
 	
-	sct.printv('Creating nifti files from vertebrae level text files', 1, 'info')
+	sct.printv('\nCreating nifti files from vertebrae level text files', 1, 'info')
 	for s in subdata.keys():
 		for sub in subdata[s].keys():
 			img = subdata[s][sub]['img']
@@ -409,7 +467,7 @@ def make_vert_nifti(jf, path):
 
 def denoise(jf, v=3, f=1, h=0.05):
 
-	sct.printv('Running denoising', 1, 'info')
+	sct.printv('\nRunning denoising', 1, 'info')
 	jdata = open_json(jf)
 	subdata = jdata['data']['subjects']
 	
@@ -432,7 +490,7 @@ def denoise(jf, v=3, f=1, h=0.05):
 	save_json(jdata, jf)
 
 def plot_histograms(jf, path, qcpath):
-	sct.printv('Generating histogram for all images', 1, 'info')
+	sct.printv('\nGenerating histogram for all images', 1, 'info')
 	subdata = open_json(jf)
 	b = 50
 	cs_hist = np.zeros([b-1,1])
@@ -462,13 +520,19 @@ def plot_histograms(jf, path, qcpath):
 
 def move_final_files(jf, orgpath, newpath):
 
-	sct.printv('Moving files from temporary directory to output')
+	sct.printv('\nMoving files from temporary directory to output')
 	print newpath
 	sct.run('mkdir %s' % newpath)
 	subdata = open_json(jf)
-
+	verbose = 0
+	subdata = open_json(jf)
+	n = len(subdata.keys())
+	i = 1
 	print subdata
 	for ss in subdata.keys():
+		sys.stdout.write("\rProgress: %s/%s" % (i,n))
+		sys.stdout.flush()
+		i += 1
 		for s in subdata[ss].keys():
 			sub = subdata[ss][s]
 
@@ -485,13 +549,13 @@ def move_final_files(jf, orgpath, newpath):
 	new_pickle = os.path.join(newpath, 'irs_model.pkl')
 	sct.run('cp %s %s' % (old_pickle, new_pickle))
 
-	# Move in original database file as well
-	tmp_org_json = os.path.join(orgpath, 'db_sorted_org.json')
-	final_json = os.path.join(newpath, 'db.json')
-	sct.run('cp %s %s' % (tmp_org_json, final_json))
+	# # Move in original database file as well
+	# tmp_org_json = os.path.join(orgpath, 'db_sorted_org.json')
+	# final_json = os.path.join(newpath, 'db.json')
+	# sct.run('cp %s %s' % (tmp_org_json, final_json))
 
 def export_org_qc(jf, tmp_path, qcpath):
-	sct.printv('Exporting QC images from ')
+	sct.printv('\nExporting QC images from ')
 	subdata = open_json(jf)
 
 	for s in subdata.keys():
@@ -517,7 +581,7 @@ def input_data_summary(jf):
 		n_sub += 1
 		n_img += len(subdata[k].keys())
 
-	sct.printv('Summary of input training data:', 1, 'info')
+	sct.printv('\nSummary of input training data:', 1, 'info')
 	sct.printv('\t Number of subjects: %s' % n_sub)
 	sct.printv('\t Number of iamges: %s' % n_img)
 
@@ -526,38 +590,48 @@ def main(arguments):
 	# Set timer for starting pre-processing
 	tic = timeit.default_timer()
 
+
 	MASTER_TRAINING_FOLDER = arguments['-i']
 	TMP_OUTPUT = os.path.join(arguments['-o'], 'tmp')
 	QC_DIR = os.path.join(arguments['-o'], 'quality_control')
 
 	# Start by copying all the data to the new directory so we don't overwrite data in the original directory
-	sct.printv('Copying all data to new directory before pre-processing', 1, 'info')
-	sct.run('mkdir %s' % arguments['-o'])
-	cmd = 'cp -rv ' + MASTER_TRAINING_FOLDER + ' ' + TMP_OUTPUT
-	sct.run(cmd)
+	sct.printv('\nSetting up output folder structure', 1, 'info')
+	try:
+		sct.run('mkdir %s' % arguments['-o'])
+	except:
+		sct.printv('Output folder already exists. Using same folder')
 
-	jf = add_aug_training_data(TMP_OUTPUT)
-	tmp_json = jf.split('.json')[0] + '_org.json'
-	sct.run('cp %s %s' % (jf, tmp_json))
+	try:
+		sct.run('mkdir %s' % TMP_OUTPUT)
+	except:
+		sct.printv('Temp folder already exists. Using same folder')
+
+	if os.path.isfile(os.path.join(arguments['-o'], 'db_sorted.json')):
+		jf = os.path.join(arguments['-o'], 'db_sorted.json')
+	else:
+		jf = add_aug_training_data(MASTER_TRAINING_FOLDER, arguments['-o'])
 
 	input_data_summary(jf)
 
-	add_tmp_fname(jf, TMP_OUTPUT)
+	move_training_data(jf, MASTER_TRAINING_FOLDER, TMP_OUTPUT)
 
 	# ------------  1. Resample data to 0.3x0.3 in-plane ------------ 
 	#resample(jf, path)
 
+	# jf = os.path.join(arguments['-o'], 'db_sorted.json')
+
 	# ------------  2. Crop image and segmentation around the cord ------------ 	
-	crop_around_cord(jf, TMP_OUTPUT)
+	# crop_around_cord(jf, TMP_OUTPUT)
 
 	# ------------ 5. Train IRS model ------------
-	train_IRS_model(jf, TMP_OUTPUT)
+	# train_IRS_model(jf, TMP_OUTPUT)
 
 	# ------------ 6. Apply IRS model ------------
-	apply_all_IRS_model(jf, TMP_OUTPUT)
+	# apply_all_IRS_model(jf, TMP_OUTPUT)
 
 	# ------------ 7. Make vertebrae levels nifti file ------------
-	make_vert_nifti(jf, TMP_OUTPUT)
+	# make_vert_nifti(jf, TMP_OUTPUT)
 
 	# ------------ 10. QA of data. ------------
 	try:
@@ -565,11 +639,11 @@ def main(arguments):
 	except:
 		print 'Dir exists. Overwriting'
 
-	plot_histograms(jf, TMP_OUTPUT, QC_DIR) 	# <<< Will save as .png image
+	# plot_histograms(jf, TMP_OUTPUT, QC_DIR) 	# <<< Will save as .png image
 
 	# Move files to final destination
-	FINAL_OUT = os.path.join(arguments['-o'], 'pre_processed')
-	move_final_files(jf, TMP_OUTPUT, FINAL_OUT)
+	# FINAL_OUT = os.path.join(arguments['-o'], 'pre_processed')
+	# move_final_files(jf, TMP_OUTPUT, FINAL_OUT)
 	export_org_qc(jf, TMP_OUTPUT, QC_DIR)
 
 	# sct.run('rm -r %s' % TMP_OUTPUT)
