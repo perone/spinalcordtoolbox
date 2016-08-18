@@ -99,7 +99,10 @@ def vert_txt2nii(img, vlevel, output_nii):
 	level_data = np.ones(img_nii.shape)
 	
 	for i in range(img_nii.shape[2]):
-		level_data[:,:,i] = level_data[:,:,i] * cord_levels[i]
+		try:
+			level_data[:,:,i] = level_data[:,:,i] * cord_levels[i]
+		except:
+			level_data[:,:,i] = -1
 
 	level_nii = nb.Nifti1Image(level_data, img_nii.get_affine())
 	nb.save(level_nii, output_nii)
