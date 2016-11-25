@@ -47,6 +47,11 @@ def get_parser():
 					example='t2s_seg.nii.gz')
 
 	parser.usage.addSection("Optional arguments")
+	parser.add_option(name="-irs",
+					type_value="file",
+					description="Intensity Range Standardization file from training",
+					mandatory=False,
+					example='irs.pkl')
 	parser.add_option(name="-t",
 					type_value="file",
 					description="Textfile with vertebra levels for to help prediction",
@@ -77,9 +82,17 @@ def get_parser():
 					description="1: Remove temp files, 0: Keep temp files (default=1)",
 					mandatory=False,
 					example=["0", "1"],
-					default_value="1")
+					default_value="0")
+
+	parser.add_option(name="-o",
+					type_value="folder",
+					description="Output folder",
+					mandatory=True,
+					example='./my_output',
+					default_value="./")
 
 
+	
 
 	return parser
 
@@ -156,10 +169,6 @@ def crop_center_cord(cord, seg, fname, ext):
 
 	return cord_cropped
 
-
-
-
-
 	# 2. Crop data around cord
 	# Image size= 100x100 in plane with 10 slices. Padded if less
 	# sct_create_mask
@@ -223,21 +232,21 @@ def main(arguments):
 	if "-bias-correction" in arguments:
 		sct.printv('Applying N4 bias field correction', 1, 'info')
 		img_out = sct.add_suffix(img, '_N4')
-		img = antsN4BiasFieldCorrection(img, output_img=img_out, dim=3, mask=None, scale=0, weight=None, shrink=4, conv=None, bspline=None, histsharp=None)
+		img = antsN4BiasFieldCorrection(img, output_img=img_out, dim=3, mask=None, scale=0, weight=None, shrink=1, conv=None, bspline=None, histsharp=None)
 		img = img_out
 
 	# ------------ Step 2. Denoise input data ------------
-	if "-denoise" in arguments:
-		sct.printv('Denoising data', 1, 'info')
-		v=3
-		f=1
-		h=0.01
-		img_out = sct.add_suffix(img, '_dn')
+	# if "-denoise" in arguments:
+	# 	sct.printv('Denoising data', 1, 'info')
+	# 	v=3
+	# 	f=1
+	# 	h=0.01
+	# 	img_out = sct.add_suffix(img, '_dn')
 
-		denoise_param = 'v=%s,f=%s,h=%s' % (str(v), str(f), str(h))
-		cmd = ['sct_maths', '-i', img, '-denoise', denoise_param, '-o', img_out]
-		status, output = sct.run(' '.join(cmd), verbose)
-		img = img_out
+	# 	denoise_param = 'v=%s,f=%s,h=%s' % (str(v), str(f), str(h))
+	# 	cmd = ['sct_maths', '-i', img, '-denoise', denoise_param, '-o', img_out]
+	# 	status, output = sct.run(' '.join(cmd), verbose)
+	# 	img = img_out
 
 	# ------------ Step 3. Extract cord through multiplication with seg ------------
 	sct.printv('Creating cropping mask around cord based on segmentation', 1, 'info')
@@ -260,22 +269,24 @@ def main(arguments):
 	seg = out_seg
 
 	# ------------ Step 5. Apply IRS model ----------------
-	# sct.printv('Applying intensity normalization model', 1, 'info')
-	# irs_model = './irs_model.pkl'
-	# with open(irs_model, 'r') as pf:
-	# 	irs_obj = pickle.load(pf)
+	if "-irs" in arguments:
+		sct.printv('Applying intensity normalization model', 1, 'info')
+		irs_model = arguments["-irs"]
+		
+		with open(irs_model, 'r') as pf:
+			irs_obj = pickle.load(pf)
 
-	# I = Image(img)
-	# imdata = I.data
-	# S = Image(seg)
-	# segdata = S.data
+		I = Image(img)
+		imdata = I.data
+		S = Image(seg)
+		segdata = S.data
 
-	# new_data = IRS_transformation(irs_obj, imdata, segdata)
-	# I.data = new_data
-	# out_img = sct.add_suffix(img, '_irs')
-	# I.setFileName(out_img)
-	# I.save()
-	# img = out_img
+		new_data = IRS_transformation(irs_obj, imdata, segdata)
+		I.data = new_data
+		out_img = sct.add_suffix(img, '_irs')
+		I.setFileName(out_img)
+		I.save()
+		img = out_img
 
 	# ------------ Step 6. Make vert nii ------------
 	if "-t" in arguments:
@@ -287,52 +298,65 @@ def main(arguments):
 		levels_provided = False
 		
 	# ------------ Step 7. Run data through Deepseg binary ------------
-	deepseg_prob = os.path.join(tmp_path, 'deepseg_prob.nii.gz')
-	deepseg_bin = os.path.join(tmp_path, 'deepseg_bin.nii.gz')
+	run_deepseg_in_script = False
 
-	if levels_provided:
-		sct.printv('6. Performing gray matter prediction using Deepseg w. levels', 1, 'info')
-	else:
-		sct.printv('6. Performing gray matter prediction using Deepseg wo. levels', 1, 'info')
+	if run_deepseg_in_script:
+		deepseg_prob = os.path.join(tmp_path, 'deepseg_prob.nii.gz')
+		deepseg_bin = os.path.join(tmp_path, 'deepseg_bin.nii.gz')
+
+		if levels_provided:
+			sct.printv('6. Performing gray matter prediction using Deepseg w. levels', 1, 'info')
+		else:
+			sct.printv('6. Performing gray matter prediction using Deepseg wo. levels', 1, 'info')
 
 	# ------------ Step 8. Reformat data to original size and resolution ------------
-	sct.printv('7. Reformatting data to input space', 1, 'info')
+	if run_deepseg_in_script:
+		sct.printv('7. Reformatting data to input space', 1, 'info')
 
-	path_fname, file_fname, ext_fname = sct.extract_fname(org_img)
-	tmp_timestamp = os.path.dirname(tmp_path).split('.')[-1]
-	tmp_dest_img = 'reg_dest_' + tmp_timestamp + ext_fname
-	tmp_dest_path = os.path.join(tmp_path, tmp_dest_img)
-	shutil.copy(org_img, tmp_dest_path)
+		path_fname, file_fname, ext_fname = sct.extract_fname(org_img)
+		tmp_timestamp = os.path.dirname(tmp_path).split('.')[-1]
+		tmp_dest_img = 'reg_dest_' + tmp_timestamp + ext_fname
+		tmp_dest_path = os.path.join(tmp_path, tmp_dest_img)
+		shutil.copy(org_img, tmp_dest_path)
 
-	source = img 	# <<<< For testing purpose only
-	destination = tmp_dest_path
-	cmd = ['sct_register_multimodal', '-i', source, '-d', destination, '-identity 1 -x nn', '-o', 'deepseg_prob.nii.gz']
-	sct.run(' '.join(cmd), verbose) 
+		source = img 	# <<<< For testing purpose only
+		destination = tmp_dest_path
+		cmd = ['sct_register_multimodal', '-i', source, '-d', destination, '-identity 1 -x nn', '-o', 'deepseg_prob.nii.gz']
+		sct.run(' '.join(cmd), verbose) 
 
-	# Files will now end up in the main folder and we need to remove them
-	path_source, file_source, ext_source = sct.extract_fname(source)
-	path_dest, file_dest, ext_dest = sct.extract_fname(destination)
-	os.remove('warp_' + file_source + '2' + file_dest + ext_dest)
-	os.remove('warp_' + file_dest + '2' + file_source + ext_dest)
-	os.remove(file_dest + '_reg' + ext_dest)
+		# Files will now end up in the main folder and we need to remove them
+		path_source, file_source, ext_source = sct.extract_fname(source)
+		path_dest, file_dest, ext_dest = sct.extract_fname(destination)
+		os.remove('warp_' + file_source + '2' + file_dest + ext_dest)
+		os.remove('warp_' + file_dest + '2' + file_source + ext_dest)
+		os.remove(file_dest + '_reg' + ext_dest)
 
-	#cmd = ['sct_register_multimodal', '-i', deepseg_bin, '-d', org_img, '-identity 1', '-o', 'deepseg_bin.nii.gz']
-	#sct.run(' '.join(cmd), verbose)
+		#cmd = ['sct_register_multimodal', '-i', deepseg_bin, '-d', org_img, '-identity 1', '-o', 'deepseg_bin.nii.gz']
+		#sct.run(' '.join(cmd), verbose)
 
-	# Registration we want to remove
+		# Registration we want to remove
 
 	# ------------ Step 9. Run QC on output data ------------
-	if "-qc" in arguments:
-		sct.printv('Creating images for QC', 1, 'info')
-		im = Image(org_img)
-		im_gmseg = Image('deepseg_prob.nii.gz')
-		im.save_quality_control(plane='axial', n_slices=5, seg=im_gmseg, thr=float(0.01), cmap_col='red-yellow', path_output='./')
+	if run_deepseg_in_script:
+		if "-qc" in arguments:
+			sct.printv('Creating images for QC', 1, 'info')
+			im = Image(org_img)
+			im_gmseg = Image('deepseg_prob.nii.gz')
+			im.save_quality_control(plane='axial', n_slices=5, seg=im_gmseg, thr=float(0.01), cmap_col='red-yellow', path_output='./')
 
-	sct.printv('Segmentation finished. To view results:')
-	sct.printv('fslview ' + org_img + 'deepseg_prob.nii.gz -l "Blue-Lightblue" -t 0.7 deepseg_bin.nii.gz -l Red -t 0.7 &')
+		sct.printv('Segmentation finished. To view results:')
+		sct.printv('fslview ' + org_img + 'deepseg_prob.nii.gz -l "Blue-Lightblue" -t 0.7 deepseg_bin.nii.gz -l Red -t 0.7 &')
 
+	# ------------ Step 10. Move output data ------------
+	sct.printv('Copying pre-processed data to output folder', 1, 'info')
+	output_folder = arguments["-o"]
+	input_file = arguments["-i"]
+	in_path, in_fname, in_ext = sct.extract_fname(input_file)
+	output_fname = in_fname + '_pp.nii.gz'
+	output_file = os.path.join(output_folder, output_fname)
+	shutil.copyfile(img, output_file)
 
-	# ------------ Step 10. Remove temporary files ------------
+	# ------------ Step 11. Remove temporary files ------------
 	if arguments['-rm'] == "1":
 		sct.printv('Removing temp folder', 1, 'info')
 		print tmp_path
