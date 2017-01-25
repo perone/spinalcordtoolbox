@@ -287,6 +287,12 @@ def get_parser():
                       example=['0', '1', '2'],
                       default_value='1')
 
+    parser.add_option(name="-compare",
+                      type_value="file",
+                      description="Pickle file with results of the same function (from example on another branch). Only with verbose 2. Output a figure with violin plots comparing both results",
+                      mandatory=False,
+                      example="results_branch_testing.pickle")
+
     return parser
 
 
@@ -317,6 +323,12 @@ if __name__ == "__main__":
     else:
         email = ''
     verbose = int(arguments["-v"])
+    if '-compare' in arguments:
+        fname_results_compare = arguments['-compare']
+        if verbose != 2:
+            sct.printv('WARNING: verbose='+str(verbose)+', no figure will be output.', verbose, 'warning')
+    else:
+        fname_results_compare = None
 
     # start timer
     start_time = time()
@@ -437,31 +449,74 @@ if __name__ == "__main__":
             import seaborn as sns
             import matplotlib.pyplot as plt
             from numpy import asarray
+            import pickle
 
-            n_plots = len(results_display.keys()) - 2
+            # keys not to plot
+            keys_to_remove = ['status', 'subject']
+
+            if fname_results_compare is not None:
+                # other results to compare with
+                results_compare = pickle.load(open(fname_results_compare, 'r'))
+                list_compare  = ['res_to_compare'] * len(results_compare)
+                col_compare = pd.DataFrame({'res': list_compare}, index=results_compare.index)
+                results_compare = pd.concat([results_compare, col_compare], axis=1)
+
+                # current results
+                list_current = ['res_current'] * len(results_display)
+                col_current = pd.DataFrame({'res': list_current}, index=results_display.index)
+                results_display = pd.concat([results_display, col_current], axis=1)
+                res_total = pd.concat([results_display, results_compare], axis=0)
+
+                # keys not to plot
+                keys_to_remove.append('res')
+                hue = 'res'
+                compare = True
+
+            else:
+                # no other result to compare
+                res_total = results_display
+                hue = None
+                compare = False
+
+            # size of the figure
+            n_plots = len(res_total.keys()) - len(keys_to_remove)
             sns.set_style("whitegrid")
             fig, ax = plt.subplots(1, n_plots, gridspec_kw={'wspace': 1}, figsize=(n_plots*4, 15))
             i = 0
             ax_array = asarray(ax)
 
-            for key in results_display.keys():
-                if key not in ['status', 'subject']:
+            for key in res_total.keys():
+                if key not in keys_to_remove:
                     if ax_array.size == 1:
                         a = ax
                     else:
                         a = ax[i]
-                    data_passed = results_display[results_display['status']==0]
+                    data_passed = res_total[res_total['status']==0]
                     sns.violinplot(x='status', y=key, data=data_passed, ax=a, inner="quartile", cut=0,
-                                   scale="count", color='lightgray')
-                    sns.swarmplot(x='status', y=key, data=data_passed, ax=a, color='0.3', size=4)
+                                   scale="count", palette='pastel', hue=hue)
+                    sns.swarmplot(x='status', y=key, data=data_passed, ax=a, color='0.3', size=4, palette='deep', hue=hue, split=True)
                     i += 1
+
+            if compare:
+                ax_legend = ax if ax_array.size == 1 else ax[0]
+                handles, labels = ax_legend.get_legend_handles_labels()
+                ax_legend.legend()
+                list_legend = list(set(res_total['res']))
+                list_legend.reverse()
+                fig.legend(handles, list_legend, prop={'size': 22})
+
             if ax_array.size == 1:
                 ax.set_xlabel(ax.get_ylabel())
                 ax.set_ylabel('')
+                if compare:
+                    ax.legend_.remove()
             else:
                 for a in ax:
                     a.set_xlabel(a.get_ylabel())
                     a.set_ylabel('')
+                    if compare:
+                        a.legend_.remove()
+
             plt.savefig('fig_' + file_log + '.png', bbox_inches='tight', pad_inches=0.5)
             plt.close()
 
