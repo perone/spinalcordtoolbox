@@ -143,6 +143,7 @@ def fill_functions():
     functions.append('sct_apply_transfo')
     # functions.append('sct_check_atlas_integrity')
     functions.append('sct_compute_mtr')
+    functions.append('sct_compute_mtsat')
     functions.append('sct_concat_transfo')
     functions.append('sct_convert')
     #functions.append('sct_convert_binary_to_trilinear')  # not useful
