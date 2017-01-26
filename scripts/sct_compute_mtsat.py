@@ -48,14 +48,14 @@ def main():
     MTw = Image(data_fname[2])
 
     # Load TRs in seconds
-    TR_PD = 0.001*float(TRs[0])
-    TR_T1 = 0.001*float(TRs[1])
-    TR_MT = 0.001*float(TRs[2])
+    TR_PD = 0.001*TRs[0]
+    TR_T1 = 0.001*TRs[1]
+    TR_MT = 0.001*TRs[2]
 
     # Convert flip angles into radians
-    alpha_PD = math.radians(float(flipAngles[0]))
-    alpha_T1 = math.radians(float(flipAngles[1]))
-    alpha_MT = math.radians(float(flipAngles[2]))
+    alpha_PD = math.radians(flipAngles[0])
+    alpha_T1 = math.radians(flipAngles[1])
+    alpha_MT = math.radians(flipAngles[2])
 
     # check if a T1 map was given in input; if not, compute it
     if inputT1_fname:
@@ -99,12 +99,12 @@ def get_parser():
                       mandatory=True,
                       example='PDw.nii.gz,T1w.nii.gz,MTw.nii.gz')
     parser.add_option(name="-FA",
-                      type_value=[[','],'str'],
+                      type_value=[[','],'float'],
                       description="Flip angles used for the PD-weighted image, the T1-weighted image and the MT-weigthed IN THE SAME ORDER AS FLAG -i.",
                       mandatory=True,
                       example='5,20,15')
     parser.add_option(name="-TR",
-                      type_value=[[','],'str'],
+                      type_value=[[','],'float'],
                       description="Repetition times (TR) in milliseconds used for the PD-weighted image, the T1-weighted image and the MT-weigthed IN THE SAME ORDER AS FLAG -i.",
                       mandatory=True,
                       example='25,11,25')
