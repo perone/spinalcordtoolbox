@@ -72,20 +72,20 @@ def main():
     A_data = (TR_PD * alpha_T1 / alpha_PD - TR_T1 * alpha_PD / alpha_T1) * np.divide(np.multiply(PDw.data, T1w.data), TR_PD * alpha_T1 * T1w.data - TR_T1 * alpha_PD * PDw.data)
 
     # Compute MTsat
-    MTsat = PDw
-    MTsat.data = TR_MT * np.multiply((alpha_MT * np.divide(A_data, MTw.data) - 1), R1_data) - (alpha_MT ^ 2) / 2.
+    MTsat = PDw.copy()
+    MTsat.data = TR_MT * np.multiply((alpha_MT * np.divide(A_data, MTw.data) - 1), R1_data) - (alpha_MT ** 2) / 2.
 
     # Output MTsat and T1 maps
     MTsat.setFileName(outputs_fname[0])
     MTsat.save()
-    T1 = PDw
+    T1 = PDw.copy()
     T1.data = 1. / R1_data
     T1.setFileName(outputs_fname[1])
     T1.save()
 
     # To view results
     sct.printv('\nDone! To view results, type:', verbose)
-    sct.printv('fslview '+MTsat.FileName+' '+T1.FileName+' &\n', verbose, 'info')
+    sct.printv('fslview '+MTsat.file_name+' '+T1.file_name+' &\n', verbose, 'info')
 
 
 # ==========================================================================================
@@ -94,22 +94,22 @@ def get_parser():
     parser = Parser(__file__)
     parser.usage.set_description('Compute magnetization transfer ratio (MTR). Output is given in percentage.')
     parser.add_option(name="-i",
-                      type_value="[[','],'str']",
+                      type_value=[[','],'str'],
                       description="IN THIS ORDER, the PD-weighted image, the T1-weighted image and the MT-weigthed image to compute the MTsat map.",
                       mandatory=True,
                       example='PDw.nii.gz,T1w.nii.gz,MTw.nii.gz')
     parser.add_option(name="-FA",
-                      type_value="[[','],'str']",
+                      type_value=[[','],'str'],
                       description="Flip angles used for the PD-weighted image, the T1-weighted image and the MT-weigthed IN THE SAME ORDER AS FLAG -i.",
                       mandatory=True,
                       example='5,20,15')
     parser.add_option(name="-TR",
-                      type_value="[[','],'str']",
+                      type_value=[[','],'str'],
                       description="Repetition times (TR) in milliseconds used for the PD-weighted image, the T1-weighted image and the MT-weigthed IN THE SAME ORDER AS FLAG -i.",
                       mandatory=True,
                       example='25,11,25')
     parser.add_option(name="-o",
-                      type_value="[[','],'str']",
+                      type_value=[[','],'str'],
                       description="Output file names for the MTsat and T1 maps.",
                       mandatory=False,
                       default_value="MTsat.nii.gz,T1.nii.gz",
