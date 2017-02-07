@@ -1,43 +1,24 @@
-# testing file for Travis
-# https://travis-ci.org/neuropoly/spinalcordtoolbox
-
-sudo: false  # To use travis container infrastructure
-
+sudo: false
 language: python
-
 notifications:
-  slack: neuropoly:YA3mt28aeHN3A0Iu7RvMFigK
-    on_success:change
-    on_failure:always
-
-# this enables to avoid recompilation of dipy if it was already compiled previously
+  slack:
+    secure: gQl8hvzCWJrjdjytO7jvtJDn4pKHxqDsrSFXNcNXj2A0WJzSh2UKJ4aCBWaSyaMBxHxy8rHZnSgKAQjynILRM6GtMGt0qpRTHNDRCLYW3AeDuZob5tCQPamiNj1PoQK59GhbNDUZdpQkiZ1qVzskBLkCfDG0z7U5KMMuBcHNO+g=
 cache:
   directories:
-    - ${HOME}/.cache/pip
-
+  - ${HOME}/.cache/pip
 matrix:
   include:
-    - os: linux
-      python: 2.7  # these are just to make travis's UI a bit prettier
-    - os: osx
-      language: generic
-
+  - os: linux
+    python: 2.7
+  - os: osx
+    language: generic
 before_install:
-  - echo "HOME="
-  - echo $HOME
-
+- echo "HOME="
+- echo $HOME
 install:
-# update tools
-#  - ./update_bin.sh
-  - yes | ./install_sct
-  # run launcher in order to update PATH
-  - source $HOME/build/neuropoly/spinalcordtoolbox/bin/sct_launcher
-  - echo $PATH
-
+- yes | ./install_sct
+- source $HOME/build/neuropoly/spinalcordtoolbox/bin/sct_launcher
+- echo $PATH
 script:
-#  - sct_check_dependencies   # test dependencies
-  - sct_testing -d 1  # test functions & integrity
-#  - python create_package.py -s ${TRAVIS_OS_NAME}  # test package creation
-#  - cd ../spinalcordtoolbox_v*
-#  - yes | ./install_sct  # test installation of package
-  - echo "DONE"
+- sct_testing -d 1
+- echo "DONE"
