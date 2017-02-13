@@ -99,7 +99,7 @@ def extract_fname_list_multi(folder_path):
             result_folder['gmseg'] = []
             for root, dirs, files in os.walk(folder_path + '/' + directory + '/t2s/'):
                 for f in files:
-                    if f.endswith('_N4.nii.gz') and f.find('_seg') == -1 and f.find('_gmseg') == -1:
+                    if f.endswith('s.nii.gz') and f.find('_seg') == -1 and f.find('_gmseg') == -1:
                         result_folder['data'] = folder_path + '/' + directory + '/t2s/' + f
                     if f.find('_gmseg') != -1 and f.find('manual_rater') == -1:
                         result_folder['gmseg'].append(folder_path + '/' + directory + '/t2s/' + f)
@@ -181,13 +181,18 @@ def main_denoise():
 # MAIN
 # ==========================================================================================
 def main():
-    folder_path = '/Volumes/folder_shared/data_machine_learning/dataset_original/wT2s/training'
-    output_folder = '/Volumes/folder_shared/data_machine_learning/dataset_original/wT2s/training_augmented'
+    #folder_path = '/Volumes/folder_shared/data_machine_learning/dataset_original/wT2s/training'
+    #output_folder = '/Volumes/folder_shared/data_machine_learning/dataset_original/wT2s/training_augmented'
+
+    folder_path = '/Users/benjamindeleener/data/training_deepseg/training'
+    output_folder = '/Users/benjamindeleener/data/training_deepseg/training_augmented'
+
     data_list, dirs_name = extract_fname_list_multi(folder_path)
 
     for i, d in enumerate(data_list):
         print i, '/', len(data_list)
         fname_im = d['data']
+        print fname_im
         path, filename, ext = sct.extract_fname(fname_im)
         file_name = path.split('/')[-3]
 
@@ -244,6 +249,16 @@ def main():
             im_t.setFileName(output_folder + '/' + file_name + data2save[1] + '.nii.gz')
             im_t.save()
 
+
+def copy_levels():
+    list_subjects = ['twh_e23102', 'twh_e23185', 'twh_e23186', 'twh_e23234', 'twh_e23394', 'twh_e23395', 'twh_e23474', 'twh_e23541', 'twh_e23700', 'twh_e23780', 'twh_e23873', 'twh_e24012', 'twh_e24395', 'twh_e24491', 'twh_e24552', 'twh_e24649', 'twh_e24750', 'twh_e24829', 'twh_e24911', 'twh_e25285', 'twh_e25428', 'twh_e25507', 'twh_e25561', 'twh_e25562', 'twh_e25638', 'twh_e25639', 'twh_e25713', 'twh_e25812', 'twh_e25950', 'twh_e26022', 'twh_e26023', 'twh_e26072', 'twh_e31412', 'twh_e31493', 'twh_e31494']
+    print '# files', len(list_subjects)
+
+    folder_path_input = '/Volumes/folder_shared/sdupont/2017-02-09-processing_dcm_87sub/results/'
+    folder_path_output = '/Users/benjamindeleener/data/training_deepseg/training/'
+
+    for subject in list_subjects:
+        sct.run('cp ' + folder_path_input + subject + '/t2s/label/template/PAM50_levels.nii.gz ' + folder_path_output + subject + '/t2s/level.nii.gz')
 
 
 # START PROGRAM
