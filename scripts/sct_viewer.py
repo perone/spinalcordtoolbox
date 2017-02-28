@@ -488,7 +488,7 @@ class ClickViewer(Viewer):
     Assumes SAL orientation
     orientation_subplot: list of two views that will be plotted next to each other. The first view is the main one (right) and the second view is the smaller one (left). Orientations are: ax, sag, cor.
     """
-    def __init__(self, list_images, visualization_parameters=None, orientation_subplot=['ax', 'sag']):
+    def __init__(self, list_images, visualization_parameters=None, orientation_subplot=['ax', 'sag'], title='', input_type='centerline'):
         self.orientation = {'ax': 1, 'cor': 2, 'sag': 3}
         if isinstance(list_images, Image):
             list_images = [list_images]
@@ -505,6 +505,7 @@ class ClickViewer(Viewer):
 
         self.compute_offset()
         self.pad_data()
+        self.title = title  # title to display in main figure
 
         self.current_point = Coordinate([int(self.images[0].data.shape[0] / 2), int(self.images[0].data.shape[1] / 2), int(self.images[0].data.shape[2] / 2)])
 
@@ -558,11 +559,22 @@ class ClickViewer(Viewer):
 
         self.setup_intensity()
 
-    def calculate_list_slices(self):
+        self.enable_custom_points = False
+        self.fig.canvas.mpl_connect('close_event', self.close_window)
+        self.closed = False
+
+        self.input_type = input_type
+
+    def calculate_list_slices(self, starting_slice=-1):
         if self.number_of_slices != 0 and self.gap_inter_slice != 0:  # mode multiple points with fixed gap
-            central_slice = int(self.image_dim[self.orientation[self.primary_subplot]-1] / 2)
-            first_slice = central_slice - (self.number_of_slices / 2) * self.gap_inter_slice
-            last_slice = central_slice + (self.number_of_slices / 2) * self.gap_inter_slice
+
+            # if starting slice is not provided, middle slice is used
+            # starting slice must be an integer, in the range of the image [0, #slices]
+            if starting_slice == -1:
+                starting_slice = int(self.image_dim[self.orientation[self.primary_subplot]-1] / 2)
+
+            first_slice = starting_slice - (self.number_of_slices / 2) * self.gap_inter_slice
+            last_slice = starting_slice + (self.number_of_slices / 2) * self.gap_inter_slice
             if first_slice < 0:
                 first_slice = 0
             if last_slice >= self.image_dim[self.orientation[self.primary_subplot]-1]:
@@ -595,8 +607,10 @@ class ClickViewer(Viewer):
                 window.update_slice(point, data_update=True)
 
         self.windows[1].axes.set_title('Click and hold\nto move around')
-        self.title = self.windows[0].axes.set_title('Please select a new point on slice ' + str(self.list_slices[self.current_slice]) + '/' + str(
-                self.image_dim[self.orientation[self.primary_subplot]-1] - 1) + ' (' + str(self.current_slice + 1) + '/' + str(len(self.list_slices)) + ')')
+        if self.title == '':
+            self.title = 'Please select a new point on slice ' + str(self.list_slices[self.current_slice]) + '/' + str(
+                self.image_dim[self.orientation[self.primary_subplot]-1] - 1) + ' (' + str(self.current_slice + 1) + '/' + str(len(self.list_slices)) + ')'
+        self.windows[0].axes.set_title(self.title)
 
     def compute_offset(self):
         if self.primary_subplot == 'ax':
@@ -624,38 +638,59 @@ class ClickViewer(Viewer):
     def on_press(self, event, plot=None):
         # below is the subplot that refers to the label collection
         if event.inaxes and plot.view == self.orientation[self.primary_subplot]:
-            if self.primary_subplot == 'ax':
-                target_point = Coordinate([int(self.list_slices[self.current_slice]), int(event.ydata) - self.offset[1], int(event.xdata) - self.offset[2], 1])
-            elif self.primary_subplot == 'cor':
-                target_point = Coordinate([int(event.ydata) - self.offset[0], int(self.list_slices[self.current_slice]), int(event.xdata) - self.offset[2], 1])
-            elif self.primary_subplot == 'sag':
-                target_point = Coordinate([int(event.ydata) - self.offset[0], int(event.xdata) - self.offset[1], int(self.list_slices[self.current_slice]), 1])
+            if not self.enable_custom_points:
+                if self.primary_subplot == 'ax':
+                    target_point = Coordinate([int(self.list_slices[self.current_slice]), int(event.ydata) - self.offset[1], int(event.xdata) - self.offset[2], 1])
+                elif self.primary_subplot == 'cor':
+                    target_point = Coordinate([int(event.ydata) - self.offset[0], int(self.list_slices[self.current_slice]), int(event.xdata) - self.offset[2], 1])
+                elif self.primary_subplot == 'sag':
+                    target_point = Coordinate([int(event.ydata) - self.offset[0], int(event.xdata) - self.offset[1], int(self.list_slices[self.current_slice]), 1])
+
+            else:
+                if self.primary_subplot == 'ax':
+                    target_point = Coordinate([int(self.current_point.x), int(event.ydata) - self.offset[1], int(event.xdata) - self.offset[2], 1])
+                elif self.primary_subplot == 'cor':
+                    target_point = Coordinate([int(event.ydata) - self.offset[0], int(self.current_point.y), int(event.xdata) - self.offset[2], 1])
+                elif self.primary_subplot == 'sag':
+                    target_point = Coordinate([int(event.ydata) - self.offset[0], int(event.xdata) - self.offset[1], self.current_point.z, 1])
+
             if self.is_point_in_image(target_point):
                 self.list_points.append(target_point)
 
-                self.current_slice += 1
-                if self.current_slice < len(self.list_slices):
+                if not self.enable_custom_points:
+                    self.current_slice += 1
+
+                    if self.current_slice < len(self.list_slices):
+
+                        point = [self.current_point.x, self.current_point.y, self.current_point.z]
+                        point[self.orientation[self.secondary_subplot]-1] = self.list_slices[self.current_slice]
+                        self.current_point = Coordinate(point)
+                        self.windows[1].update_slice([point[2], point[0], point[1]], data_update=False)
+                        self.windows[0].update_slice(self.list_slices[self.current_slice])
+                        title_obj = self.windows[0].axes.set_title('Please select a new point on slice ' +
+                                                        str(self.list_slices[self.current_slice]) + '/' +
+                                                        str(self.image_dim[self.orientation[self.primary_subplot]-1] - 1) + ' (' +
+                                                        str(self.current_slice + 1) + '/' +
+                                                        str(len(self.list_slices)) + ')')
+                        plt.setp(title_obj, color='k')
+                        plot.draw()
+                    else:
+                        for coord in self.list_points:
+                            if self.list_points_useful_notation != '':
+                                self.list_points_useful_notation += ':'
+                            self.list_points_useful_notation = self.list_points_useful_notation + str(coord.x) + ',' + str(
+                                coord.y) + ',' + str(coord.z) + ',' + str(coord.value)
+                        self.all_processed = True
+                        plt.close()
+
+                else:
                     point = [self.current_point.x, self.current_point.y, self.current_point.z]
-                    point[self.orientation[self.secondary_subplot]-1] = self.list_slices[self.current_slice]
-                    self.current_point = Coordinate(point)
-                    self.windows[0].update_slice(self.list_slices[self.current_slice])
-                    title_obj = self.windows[0].axes.set_title('Please select a new point on slice ' +
-                                                    str(self.list_slices[self.current_slice]) + '/' +
-                                                    str(self.image_dim[self.orientation[self.primary_subplot]-1] - 1) + ' (' +
-                                                    str(self.current_slice + 1) + '/' +
-                                                    str(len(self.list_slices)) + ')')
+                    self.draw_points(self.windows[0], self.current_point.x)
+                    self.windows[0].update_slice(point, data_update=True)
+                    title_obj = self.windows[0].axes.set_title('Automatic sliding disabled\nPlease click on spinal cord center\nand close the window once finished\n(# points = ' + str(len(self.list_points)) + ')')
                     plt.setp(title_obj, color='k')
                     plot.draw()
 
-                    self.windows[1].update_slice(point, data_update=False)
-                else:
-                    for coord in self.list_points:
-                        if self.list_points_useful_notation != '':
-                            self.list_points_useful_notation += ':'
-                        self.list_points_useful_notation = self.list_points_useful_notation + str(coord.x) + ',' + str(
-                            coord.y) + ',' + str(coord.z) + ',' + str(coord.value)
-                    self.all_processed = True
-                    plt.close()
             else:
                 title_obj = self.windows[0].axes.set_title('The point you selected in not in the image. Please try again.')
                 plt.setp(title_obj, color='r')
@@ -669,6 +704,13 @@ class ClickViewer(Viewer):
             if not is_in_axes:
                 return
 
+            if self.input_type == 'centerline':
+                self.enable_custom_points = True
+
+            title_obj = self.windows[0].axes.set_title('Automatic sliding disabled\nPlease click on spinal cord center\nand close the window once finished\n(# points = ' + str(len(self.list_points)) + ')')
+            plt.setp(title_obj, color='k')
+            plot.draw()
+
             self.last_update = time()
             self.current_point = self.get_event_coordinates(event, plot)
             point = [self.current_point.x, self.current_point.y, self.current_point.z]
@@ -679,7 +721,6 @@ class ClickViewer(Viewer):
                     self.draw_points(window, self.current_point.x)
                     window.update_slice(point, data_update=True)
 
-
     def draw_points(self, window, current_slice):
         if window.view == self.orientation[self.primary_subplot]:
             x_data, y_data = [], []
@@ -689,6 +730,7 @@ class ClickViewer(Viewer):
                     y_data.append(pt.y + self.offset[1])
             self.plot_points.set_xdata(x_data)
             self.plot_points.set_ydata(y_data)
+            self.fig.canvas.draw()
 
     def on_release(self, event, plot=None):
         """
@@ -697,15 +739,16 @@ class ClickViewer(Viewer):
         :param plot:
         :return:
         """
-        if event.button == 1 and event.inaxes and plot.view == self.orientation[self.secondary_subplot]:
+        if event.button == 1 and event.inaxes == plot.axes and plot.view == self.orientation[self.secondary_subplot]:
             point = [self.current_point.x, self.current_point.y, self.current_point.z]
-            point[self.orientation[self.primary_subplot]-1] = self.list_slices[self.current_slice]
+            if not self.enable_custom_points:
+                point[self.orientation[self.primary_subplot]-1] = self.list_slices[self.current_slice]
             for window in self.windows:
                 if window is plot:
                     window.update_slice(point, data_update=False)
                 else:
-                    self.draw_points(window, self.current_point.y)
                     window.update_slice(point, data_update=True)
+                    self.draw_points(window, self.current_point.y)
         return
 
     def on_motion(self, event, plot=None):
@@ -751,6 +794,13 @@ class ClickViewer(Viewer):
             return self.list_points_useful_notation
         else:
             return None
+
+    def close_window(self, event):
+        for coord in self.list_points:
+            if self.list_points_useful_notation != '':
+                self.list_points_useful_notation += ':'
+            self.list_points_useful_notation = self.list_points_useful_notation + str(coord.x) + ',' + str(coord.y) + ',' + str(coord.z) + ',' + str(coord.value)
+        self.closed = True
 
 
 def get_parser():

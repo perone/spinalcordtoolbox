@@ -421,6 +421,10 @@ class SegmentGM:
             list_dic_slices = [self.model.slices[j] for j in list_dic_indexes_by_slice[target_slice.id]]
             # average slices GM and WM
             data_mean_gm, data_mean_wm = average_gm_wm(list_dic_slices)
+            # set negative values to 0
+            data_mean_gm[data_mean_gm < 0] = 0
+            data_mean_wm[data_mean_wm < 0] = 0
+
             if self.param_seg.type_seg == 'bin':
                 # binarize GM seg
                 data_mean_gm[data_mean_gm >= 0.5] = 1
@@ -714,7 +718,8 @@ def main(args=None):
         elif os.path.isfile(arguments['-vertfile']):
             param_seg.fname_level = arguments['-vertfile']
         else:
-            sct.printv(parser.usage.generate(error='ERROR: -vertfile input file: "'+arguments['-vertfile']+'" does not exist.'))
+            param_seg.fname_level = None
+            sct.printv('WARNING: -vertfile input file: "'+arguments['-vertfile']+'" does not exist.\nSegmenting GM without using vertebral information', 1, 'warning')
     if '-denoising' in arguments:
         param_data.denoising = bool(int(arguments['-denoising']))
     if '-normalization' in arguments:

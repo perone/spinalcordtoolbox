@@ -159,7 +159,11 @@ class ProcessLabels(object):
             # display info
             sct.printv('Label #' + str(i) + ': ' + str(coord.x) + ',' + str(coord.y) + ',' + str(coord.z) + ' --> ' +
                        str(coord.value), 1)
-            image_output.data[int(coord.x), int(coord.y), int(coord.z)] = coord.value
+            if len(image_output.data.shape) == 3:
+                image_output.data[int(coord.x), int(coord.y), int(coord.z)] = coord.value
+            elif len(image_output.data.shape) == 2:
+                assert str(coord.z) == '0', "ERROR: 2D coordinates should have a Z value of 0. Z coordinate is :"+str(coord.z)
+                image_output.data[int(coord.x), int(coord.y)] = coord.value
 
         return image_output
 
@@ -735,8 +739,8 @@ class ProcessLabels(object):
 # PARSER
 # ==========================================================================================
 def get_parser():
-    # param_default = Param()
-
+    # initialize default param
+    param_default = Param()
     # Initialize the parser
     parser = Parser(__file__)
     parser.usage.set_description('Utility function for label image.')
@@ -768,7 +772,7 @@ def get_parser():
     parser.add_option(name='-cross',
                       type_value='int',
                       description='Create a cross around each non-zero value. Input cross radius in mm.',
-                      example=param.cross_size,
+                      example=param_default.cross_size,
                       mandatory=False)
     parser.add_option(name='-cubic-to-point',
                       type_value=None,
@@ -812,7 +816,7 @@ def get_parser():
                       type_value="multiple_choice",
                       description='Verbose. 0: nothing. 1: basic. 2: extended.',
                       mandatory=False,
-                      default_value=param.verbose,
+                      default_value=param_default.verbose,
                       example=['0', '1', '2'])
     return parser
 
@@ -825,9 +829,12 @@ def main(args=None):
     if not args:
         args = sys.argv[1:]
 
+    # initialize parameters
+    param = Param()
+
     # Get parser info
     parser = get_parser()
-    arguments = parser.parse(sys.argv[1:])
+    arguments = parser.parse(args)
     input_filename = arguments['-i']
     input_fname_output = None
     input_fname_ref = None
@@ -899,8 +906,5 @@ def main(args=None):
 # START PROGRAM
 # ==========================================================================================
 if __name__ == "__main__":
-    # # initialize parameters
-    param = Param()
-    # param_default = Param()
     # call main function
     main()

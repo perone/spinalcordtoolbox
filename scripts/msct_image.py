@@ -447,8 +447,12 @@ class Image(object):
                 X, Y, Z = (self.data > 0).nonzero()
                 list_coordinates = [Coordinate([X[i], Y[i], Z[i], self.data[X[i], Y[i], Z[i]]]) for i in range(0, len(X))]
             elif n_dim == 2:
-                X, Y = (self.data > 0).nonzero()
-                list_coordinates = [Coordinate([X[i], Y[i], self.data[X[i], Y[i]]]) for i in range(0, len(X))]
+                try:
+                    X, Y = (self.data > 0).nonzero()
+                    list_coordinates = [Coordinate([X[i], Y[i], 0, self.data[X[i], Y[i]]]) for i in range(0, len(X))]
+                except ValueError:
+                    X, Y, Z = (self.data > 0).nonzero()
+                    list_coordinates = [Coordinate([X[i], Y[i], 0, self.data[X[i], Y[i], 0]]) for i in range(0, len(X))]
         except Exception, e:
             print 'ERROR', e
             printv('ERROR: Exception ' + str(e) + ' caught while geting non Zeros coordinates', 1, 'error')
@@ -458,13 +462,7 @@ class Image(object):
             if n_dim == 3:
                 list_coordinates = [CoordinateValue([X[i], Y[i], Z[i], self.data[X[i], Y[i], Z[i]]]) for i in range(0, len(X))]
             else:
-                list_coordinates = [CoordinateValue([X[i], Y[i], self.data[X[i], Y[i]]]) for i in range(0, len(X))]
-        else:
-            from msct_types import Coordinate
-            if n_dim == 3:
-                list_coordinates = [Coordinate([X[i], Y[i], Z[i], self.data[X[i], Y[i], Z[i]]]) for i in range(0, len(X))]
-            else:
-                list_coordinates = [Coordinate([X[i], Y[i], self.data[X[i], Y[i]]]) for i in range(0, len(X))]
+                list_coordinates = [CoordinateValue([X[i], Y[i], 0, self.data[X[i], Y[i]]]) for i in range(0, len(X))]
         if sorting is not None:
             if reverse_coord not in [True, False]:
                 raise ValueError('reverse_coord parameter must be a boolean')
@@ -815,14 +813,14 @@ class Image(object):
 
             return coordi_pix_list
 
-    def get_values(self, coordi=None, interpolation_mode=0, border='constant'):
+    def get_values(self, coordi=None, interpolation_mode=0, border='constant', cval=0.0):
         """
         This function returns the intensity value of the image at the position coordi (can be a list of coordinates).
         :param coordi: continuouspix
         :param interpolation_mode: 0=nearest neighbor, 1= linear, 2= 2nd-order spline, 3= 2nd-order spline, 4= 2nd-order spline, 5= 5th-order spline
         :return: intensity values at continuouspix with interpolation_mode
         """
-        return map_coordinates(self.data, coordi, output=np.float32, order=interpolation_mode, mode=border)
+        return map_coordinates(self.data, coordi, output=np.float32, order=interpolation_mode, mode=border, cval=cval)
 
     def get_transform(self, im_ref, mode='affine'):
         aff_im_self = self.im_file.affine
