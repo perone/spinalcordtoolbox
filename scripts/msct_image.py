@@ -1169,6 +1169,58 @@ def compute_dice(image1, image2, mode='3d', label=1, zboundaries=False):
 
     return dice
 
+
+def compute_centerline_(image1, image2):
+    """
+        Input:
+            - image1 [Image]: binary segmentation or centerline
+            - image2 [Image]: binary segmentation or centerline
+
+        Output:
+            - metric dict:
+                -> mse [float] = Mean Squared Error [mm] on distance between image1 and image2 centerlines
+                -> maxmove [float] = Max distance [mm] between between image1 and image2 centerlines
+    """
+
+    if image1.orientation != 'RPI':
+        image1_c = image1.copy()
+        image1_c.change_orientation('RPI')
+        image1 = image1_c
+    if image2.orientation != 'RPI':
+        image2_c = image2.copy()
+        image2_c.change_orientation('RPI')
+        image2 = image2_c
+
+    # check if images are in the same coordinate system
+    assert image1.data.shape == image2.data.shape, "\n\nERROR: the data (" + image1.absolutepath + " and " + image2.absolutepath + ") don't have the same size.\nPlease use  \"sct_register_multimodal -i im1.nii.gz -d im2.nii.gz -identity 1\"  to put the input images in the same space"
+
+    stats_dct = {'mse': None, 'maxmove': None}
+    cmpt_sc_slice, slice_coverage = 0, 0
+    mse_dist = []
+
+    for z in range(image1.dim[2]):
+
+        if np.sum(image1.data[:, :, z]): # if there is sc within the current axial slice
+            x_true, y_true = [np.where(image1.data[:, :, z] > 0)[i][0] for i in range(len(np.where(image1.data[:, :, z] > 0)))]
+            x_pred, y_pred = [np.where(image2.data[:, :, z] > 0)[i][0] for i in range(len(np.where(image2.data[:, :, z] > 0)))]
+
+            # Physical coords computation
+            x_true, y_true = image1.transfo_pix2phys([[x_true, y_true, z]])[0][0], image1.transfo_pix2phys([[x_true, y_true, z]])[0][1]
+            x_pred, y_pred = image2.transfo_pix2phys([[x_pred, y_pred, z]])[0][0], image2.transfo_pix2phys([[x_pred, y_pred, z]])[0][1]
+
+            # MSE_current computation
+            mse_dist.append((x_true - x_pred)**2 + (y_true - y_pred)**2)
+
+            # Count slices with sc_seg_manual
+            cmpt_sc_slice += 1
+
+    if len(mse_dist):
+        stats_dct['mse'] = sqrt(sum(mse_dist)/float(cmpt_sc_slice))
+        stats_dct['maxmove'] = sqrt(max(mse_dist))
+        stats_dct['zcoverage'] = float(slice_coverage*100.0)/cmpt_sc_slice
+
+    return stats_dct
+
 def find_zmin_zmax(fname):
     import sct_utils as sct
     # crop image
