@@ -404,6 +404,8 @@ def dmri_moco(param):
     im_dmri = Image(file_data+ext_data)
     im_dmri_moco = Image(file_data+param.suffix+ext_data)
     im_dmri_moco = copy_header(im_dmri, im_dmri_moco)
+    # import copy
+    # im_dmri_moco.hdr = copy.deepcopy(im_dmri.hdr)
     im_dmri_moco.save()
 
 
