@@ -33,7 +33,6 @@ from sct_image import split_data
 def moco(param):
 
     # retrieve parameters
-    fsloutput = 'export FSLOUTPUTTYPE=NIFTI; '  # for faster processing, all outputs are in NIFTI
     file_data = param.file_data
     file_target = param.file_target
     folder_mat = sct.slash_at_the_end(param.mat_moco, 1)  # output folder of mat file
