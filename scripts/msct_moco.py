@@ -33,6 +33,7 @@ from sct_image import split_data
 def moco(param):
 
     # retrieve parameters
+
     file_data = param.file_data
     file_target = param.file_target
     folder_mat = sct.slash_at_the_end(param.mat_moco, 1)  # output folder of mat file
@@ -100,7 +101,7 @@ def moco(param):
 
         # average registered volume with target image
         # N.B. use weighted averaging: (target * nb_it + moco) / (nb_it + 1)
-        if param.iterative_averaging and indice_index < 10 and failed_transfo[it] == 0:
+        if param.iterative_averaging and indice_index < 10 and failed_transfo[it] == 0 and param.todo != 'apply':
             sct.run('sct_maths -i '+file_target+ext+' -mul '+str(indice_index+1)+' -o '+file_target+ext)
             sct.run('sct_maths -i '+file_target+ext+' -add '+file_data_splitT_moco_num[it]+ext+' -o '+file_target+ext)
             sct.run('sct_maths -i '+file_target+ext+' -div '+str(indice_index+2)+' -o '+file_target+ext)
