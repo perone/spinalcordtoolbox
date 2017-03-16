@@ -34,6 +34,7 @@
 # About the license: see the file LICENSE.TXT
 #########################################################################################
 import commands
+import copy
 import copy_reg
 import json
 import os
@@ -207,11 +208,10 @@ def test_function(function, folder_dataset, parameters='', nb_cpu=None, json_req
     pool = Pool(processes=nb_cpu, initializer=init_worker)
 
     try:
-        async_results = pool.map_async(function_launcher, data_and_params).get(9999999)
-        # results = process_results(async_results.get(9999999), subjects_name, function, folder_dataset, parameters)  # get the sorted results once all jobs are finished
+        async_results = pool.map_async(function_launcher, data_and_params)
         pool.close()
         pool.join()  # waiting for all the jobs to be done
-        results = process_results(async_results, subjects_name, function, folder_dataset, parameters)  # get the sorted results once all jobs are finished
+        results = process_results(async_results.get(99999999), subjects_name, function, folder_dataset, parameters)  # get the sorted results once all jobs are finished
     except KeyboardInterrupt:
         print "\nWarning: Caught KeyboardInterrupt, terminating workers"
         pool.terminate()
@@ -445,11 +445,15 @@ def main(args=None):
         dict_std.pop('status')
         dict_std.pop('subject')
         print 'STD: ' + str(dict_std)
-
+	# translate status
+        status = {0: 'Passed', 1: 'Crashed', 99: 'Failed', 200: 'Input file(s) missing',
+                  201: 'Ground-truth file(s) missing'}
         # print detailed results
         print '\nDETAILED RESULTS:'
-        print results_display.to_string()
-        print 'Status: 0: Passed | 1: Crashed | 99: Failed | 200: Input file(s) missing | 201: Ground-truth file(s) missing'
+        r = copy.deepcopy(results_display)
+        for i, s in enumerate(r.status):
+            r.status[i] = status[s]
+        print r.to_string()
 
         if verbose == 2:
             import seaborn as sns
