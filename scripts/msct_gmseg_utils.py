@@ -46,6 +46,7 @@ class Slice:
         """
         self.id = slice_id
         self.im = im
+        self.sc_seg = sc_seg
         self.gm_seg = gm_seg
         self.wm_seg = wm_seg
         self.im_M = im_m
@@ -53,7 +54,7 @@ class Slice:
         self.wm_seg_M = wm_seg_m
         self.level = level
 
-    def set(self, slice_id=None, im=None, gm_seg=None, wm_seg=None, im_m=None, gm_seg_m=None, wm_seg_m=None, level=None):
+    def set(self, slice_id=None, im=None, sc_seg=None, gm_seg=None, wm_seg=None, im_m=None, gm_seg_m=None, wm_seg_m=None, level=None):
         """
         Slice setter, only the specified parameters are set
         :param slice_id: slice ID number, type: int
@@ -70,6 +71,8 @@ class Slice:
             self.id = slice_id
         if im is not None:
             self.im = np.asarray(im)
+        if sc_seg is not None:
+            self.sc_seg = np.asarray(sc_seg)
         if gm_seg is not None:
             self.gm_seg = np.asarray(gm_seg)
         if wm_seg is not None:
