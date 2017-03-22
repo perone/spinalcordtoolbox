@@ -350,8 +350,10 @@ class SegmentGM:
         # get 3D images from list of slices
         im_dest = self.get_im_from_list(np.array([self.model.mean_image for target_slice in self.target_im]))
         im_src = self.get_im_from_list(np.array([target_slice.im for target_slice in self.target_im]))
+        im_src_seg = self.get_im_from_list(np.array([target_slice.sc_seg for target_slice in self.target_im]))
+        im_dest_seg = self.get_im_from_list(np.array([self.model.mean_sc_seg for target_slice in self.target_im]))
         # register list of target slices on list of model mean image
-        im_src_reg, fname_src2dest, fname_dest2src = register_data(im_src, im_dest, param_reg=self.param_data.register_param, path_copy_warp=path_warping_fields, rm_tmp=self.param.rm_tmp)
+        im_src_reg, fname_src2dest, fname_dest2src = register_data(im_src, im_dest, im_src_seg, im_dest_seg, param_reg=self.param_data.register_param, path_copy_warp=path_warping_fields, rm_tmp=self.param.rm_tmp)
         # rename warping fields
         fname_src2dest_save = 'warp_target2dic.nii.gz'
         fname_dest2src_save = 'warp_dic2target.nii.gz'

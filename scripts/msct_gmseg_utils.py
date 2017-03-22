@@ -31,7 +31,7 @@ class Slice:
     """
     Slice instance used in the model dictionary for the segmentation of the gray matter
     """
-    def __init__(self, slice_id=None, im=None, gm_seg=None, wm_seg=None, im_m=None, gm_seg_m=None, wm_seg_m=None, level=0):
+    def __init__(self, slice_id=None, im=None, sc_seg=None, gm_seg=None, wm_seg=None, im_m=None, gm_seg_m=None, wm_seg_m=None, level=0):
         """
         Slice constructor
         :param slice_id: slice ID number, type: int
@@ -171,12 +171,12 @@ def pre_processing(fname_target, fname_sc_seg, fname_level=None, fname_manual_gm
     printv('  Mask data using the spinal cord segmentation...', verbose, 'normal')
     list_sc_seg_slices = interpolate_im_to_ref(im_sc_seg_rpi, im_sc_seg_rpi, new_res=new_res, sq_size_size_mm=square_size_size_mm, interpolation_mode=1)
     for i in range(len(list_im_slices)):
-        # list_im_slices[i].data[list_sc_seg_slices[i].data == 0] = 0
         list_sc_seg_slices[i] = binarize(list_sc_seg_slices[i], thr_min=0.5, thr_max=1)
-        list_im_slices[i].data = list_im_slices[i].data * list_sc_seg_slices[i].data
+        # DO NOT MASK
+        # list_im_slices[i].data = list_im_slices[i].data * list_sc_seg_slices[i].data
 
     printv('  Split along rostro-caudal direction...', verbose, 'normal')
-    list_slices_target = [Slice(slice_id=i, im=im_slice.data, gm_seg=[], wm_seg=[]) for i, im_slice in enumerate(list_im_slices)]
+    list_slices_target = [Slice(slice_id=i, im=im_slice.data, sc_seg=list_sc_seg_slices[i].data, gm_seg=[], wm_seg=[]) for i, im_slice in enumerate(list_im_slices)]
 
     # load vertebral levels
     if fname_level is not None:
@@ -193,7 +193,7 @@ def pre_processing(fname_target, fname_sc_seg, fname_level=None, fname_manual_gm
     # load manual gmseg if there is one (model data)
     if fname_manual_gmseg is not None:
         printv('\n\tLoad manual GM segmentation(s) ...', verbose, 'normal')
-        list_slices_target = load_manual_gmseg(list_slices_target, fname_manual_gmseg, tmp_dir, im_sc_seg_rpi, new_res, square_size_size_mm, for_model=for_model)
+        list_slices_target = load_manual_gmseg(list_slices_target, fname_manual_gmseg, tmp_dir, im_sc_seg_rpi, new_res, square_size_size_mm, for_model=for_model, fname_mask=fname_mask)
 
     os.chdir('..')
     if rm_tmp:
@@ -369,7 +369,7 @@ def load_level(list_slices_target, fname_level):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-def load_manual_gmseg(list_slices_target, list_fname_manual_gmseg, tmp_dir, im_sc_seg_rpi, new_res, square_size_size_mm, for_model=False):
+def load_manual_gmseg(list_slices_target, list_fname_manual_gmseg, tmp_dir, im_sc_seg_rpi, new_res, square_size_size_mm, for_model=False, fname_mask=None):
     if isinstance(list_fname_manual_gmseg, str):
         # consider fname_manual_gmseg as a list of file names to allow multiple manual GM segmentation
         list_fname_manual_gmseg = [list_fname_manual_gmseg]
@@ -387,6 +387,11 @@ def load_manual_gmseg(list_slices_target, list_fname_manual_gmseg, tmp_dir, im_s
         # reorient to RPI
         im_manual_gmseg = set_orientation(im_manual_gmseg, 'RPI')
 
+        if fname_mask is not None:
+            fname_gmseg_crop = add_suffix(im_manual_gmseg.absolutepath, '_pre_crop')
+            crop_im = ImageCropper(input_file=im_manual_gmseg.absolutepath, output_file=fname_gmseg_crop, mask=fname_mask)
+            im_manual_gmseg = crop_im.crop()
+
         # assert gmseg has the right number of slices
         assert im_manual_gmseg.data.shape[2] == len(list_slices_target), 'ERROR: the manual GM segmentation has not the same number of slices than the image.'
 
@@ -403,7 +408,7 @@ def load_manual_gmseg(list_slices_target, list_fname_manual_gmseg, tmp_dir, im_s
                 n_poped += 1
             else:
                 slice_im.gm_seg.append(im_gm.data)
-                wm_slice = (slice_im.im > 0) - im_gm.data
+                wm_slice = slice_im.sc_seg - im_gm.data
                 slice_im.wm_seg.append(wm_slice)
 
     return list_slices_target
@@ -415,7 +420,7 @@ def load_manual_gmseg(list_slices_target, list_fname_manual_gmseg, tmp_dir, im_s
 ########################################################################################################################
 #                               FUNCTIONS USED FOR PROCESSING DATA (data model and data to segment)
 ########################################################################################################################
-def register_data(im_src, im_dest, param_reg, path_copy_warp=None, rm_tmp=True):
+def register_data(im_src, im_dest, im_src_seg, im_dest_seg, param_reg, path_copy_warp=None, interp='linear', rm_tmp=True):
     '''
 
     Parameters
@@ -430,9 +435,6 @@ def register_data(im_src, im_dest, param_reg, path_copy_warp=None, rm_tmp=True):
 
     '''
     # im_src and im_dest are already preprocessed (in theory: im_dest = mean_image)
-    # binarize images to get seg
-    im_src_seg = binarize(im_src, thr_min=1, thr_max=1)
-    im_dest_seg = binarize(im_dest)
     # create tmp dir and go in it
     tmp_dir = tmp_create()
     os.chdir(tmp_dir)
@@ -454,7 +456,8 @@ def register_data(im_src, im_dest, param_reg, path_copy_warp=None, rm_tmp=True):
                                        '-d', fname_dest,
                                        '-iseg', fname_src_seg,
                                        '-dseg', fname_dest_seg,
-                                       '-param', param_reg])
+                                       '-param', param_reg,
+                                       '-x', interp])
 
     # get registration result
     fname_src_reg = add_suffix(fname_src, '_reg')

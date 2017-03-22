@@ -155,7 +155,8 @@ class ParamData:
         self.denoising = True
         self.axial_res = 0.3
         self.square_size_size_mm = 22.5
-        self.register_param = 'step=1,type=seg,algo=centermassrot,metric=MeanSquares,smooth=2,poly=0,iter=1:step=2,type=seg,algo=columnwise,metric=MeanSquares,smooth=1,iter=1'
+        #self.register_param = 'step=1,type=seg,algo=centermassrot,metric=MeanSquares,smooth=2,poly=0,iter=1:step=2,type=seg,algo=columnwise,metric=MeanSquares,smooth=1,iter=1'
+        self.register_param = 'step=1,type=seg,algo=centermassrot,metric=MeanSquares,smooth=2,poly=0,iter=1:step=2,type=seg,algo=columnwise,metric=MeanSquares,smoothWarpXY=3,iter=1'
         self.normalization = True
 
     def __repr__(self):
@@ -184,6 +185,7 @@ class Model:
 
         self.slices = [] # list of Slice() : Model dictionary
         self.mean_image = None
+        self.mean_sc_seg = None
         self.intensities = None
 
         self.fitted_model = None # PCA or Isomap model
@@ -210,6 +212,7 @@ class Model:
         printv('\n\tLoading data dictionary ...', self.param.verbose, 'normal')
         self.load_model_data()
         self.mean_image = np.mean([dic_slice.im for dic_slice in self.slices], axis=0)
+        self.mean_sc_seg = np.mean([dic_slice.sc_seg for dic_slice in self.slices], axis=0)
 
         printv('\n\tCo-register all the data into a common groupwise space ...', self.param.verbose, 'normal')
         self.coregister_model_data()
@@ -282,6 +285,7 @@ class Model:
     def coregister_model_data(self):
         # get mean image
         im_mean = Image(param=self.mean_image)
+        im_mean_sc_seg = Image(param=self.mean_sc_seg)
 
         # register all slices WM on mean WM
         for dic_slice in self.slices:
@@ -292,8 +296,9 @@ class Model:
 
             # get slice mean WM image
             im_slice = Image(param=dic_slice.im)
+            im_slice_seg = Image(param=dic_slice.sc_seg)
             # register slice image on mean dic image
-            im_slice_reg, fname_src2dest, fname_dest2src = register_data(im_src=im_slice, im_dest=im_mean, param_reg=self.param_data.register_param, path_copy_warp=warp_dir)
+            im_slice_reg, fname_src2dest, fname_dest2src = register_data(im_src=im_slice, im_dest=im_mean, im_src_seg=im_slice_seg, im_dest_seg=im_mean_sc_seg, param_reg=self.param_data.register_param, path_copy_warp=warp_dir)
             shape = im_slice_reg.data.shape
 
             # use forward warping field to register all slice wm
@@ -457,6 +462,7 @@ class Model:
         self.slices = pickle.load(gzip.open(model_files['slices'],  'rb'))
         printv('  '+str(len(self.slices))+' slices in the model dataset', self.param.verbose, 'normal')
         self.mean_image = np.mean([dic_slice.im for dic_slice in self.slices], axis=0)
+        self.mean_sc_seg = np.mean([dic_slice.sc_seg for dic_slice in self.slices], axis=0)
 
         ##   - self.intensities = for normalization
         self.intensities = pickle.load(gzip.open(model_files['intensity'], 'rb'))
