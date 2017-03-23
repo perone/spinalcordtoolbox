@@ -171,7 +171,8 @@ def pre_processing(fname_target, fname_sc_seg, fname_level=None, fname_manual_gm
     printv('  Mask data using the spinal cord segmentation...', verbose, 'normal')
     list_sc_seg_slices = interpolate_im_to_ref(im_sc_seg_rpi, im_sc_seg_rpi, new_res=new_res, sq_size_size_mm=square_size_size_mm, interpolation_mode=1)
     for i in range(len(list_im_slices)):
-        list_sc_seg_slices[i] = binarize(list_sc_seg_slices[i], thr_min=0.5, thr_max=1)
+        # make sure SC segmentation is binary
+        list_sc_seg_slices[i] = binarize(list_sc_seg_slices[i], thr_min=0.5, thr_max=0.5)
         # DO NOT MASK
         # list_im_slices[i].data = list_im_slices[i].data * list_sc_seg_slices[i].data
 
