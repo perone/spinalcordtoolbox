@@ -410,6 +410,7 @@ def load_manual_gmseg(list_slices_target, list_fname_manual_gmseg, tmp_dir, im_s
             else:
                 slice_im.gm_seg.append(im_gm.data)
                 wm_slice = slice_im.sc_seg - im_gm.data
+                wm_slice[wm_slice<0] = 0
                 slice_im.wm_seg.append(wm_slice)
 
     return list_slices_target
