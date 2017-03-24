@@ -360,8 +360,10 @@ class Model:
                         med_wm = np.median(slice.im_M[wm == 1])
                         list_med_wm.append(med_wm)
 
-                    list_min.append(min(slice.im_M.flatten()[slice.im_M.flatten().nonzero()]))
-                    list_max.append(max(slice.im_M.flatten()))
+                    im_m_in_sc = slice.im_M[(slice.gm_seg_M[0] + slice.wm_seg_M[0]) == 1]
+                    flat_im_m_non_zero = im_m_in_sc[im_m_in_sc.flatten().nonzero()]
+                    list_min.append(min(flat_im_m_non_zero))
+                    list_max.append(max(flat_im_m_non_zero))
 
                 list_gm_by_level.append(np.mean(list_med_gm))
                 list_wm_by_level.append(np.mean(list_med_wm))
