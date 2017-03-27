@@ -368,15 +368,18 @@ class SegmentGM:
         return path_warping_fields
 
     def normalize_target(self):
+        from skimage import exposure
         # get gm seg from model by level
-        gm_seg_model, wm_seg_model = self.model.get_gm_wm_by_level()
+        # gm_seg_model, wm_seg_model = self.model.get_gm_wm_by_level()
 
         # for each target slice: normalize
         for target_slice in self.target_im:
-            level_int = int(round(target_slice.level))
-            if level_int not in self.model.intensities.index:
-                level_int = 0
-            norm_im_M = normalize_slice(target_slice.im_M, gm_seg_model[level_int], wm_seg_model[level_int], self.model.intensities['GM'][level_int], self.model.intensities['WM'][level_int], val_min=self.model.intensities['MIN'][level_int], val_max=self.model.intensities['MAX'][level_int])
+            # level_int = int(round(target_slice.level))
+            # if level_int not in self.model.intensities.index:
+            #   level_int = 0
+            #norm_im_M = normalize_slice(target_slice.im_M, gm_seg_model[level_int], wm_seg_model[level_int], self.model.intensities['GM'][level_int], self.model.intensities['WM'][level_int], val_min=self.model.intensities['MIN'][level_int], val_max=self.model.intensities['MAX'][level_int])
+            data_rescale = exposure.rescale_intensity(target_slice.im_M, out_range=(0, 1))
+            norm_im_M = exposure.equalize_adapthist(data_rescale)
             target_slice.set(im_m=norm_im_M)
 
     def project_target(self):
