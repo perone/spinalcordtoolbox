@@ -149,17 +149,24 @@ def pre_processing(fname_target, fname_sc_seg, fname_level=None, fname_manual_gm
         im_sc_seg_rpi_crop = crop_sc_seg.crop()
         # denoising
         from sct_maths import denoise_nlmeans
-        block_radius = int(im_target_rpi_crop.data.shape[2]/2) if im_target_rpi_crop.data.shape[2]<10 else 5
-        data_denoised = denoise_nlmeans(im_target_rpi_crop.data, block_radius = block_radius)
+        block_radius = 3
+        block_radius = int(im_target_rpi_crop.data.shape[2] / 2) if im_target_rpi_crop.data.shape[2] < (block_radius*2) else block_radius
+        patch_radius = block_radius -1
+        data_denoised = denoise_nlmeans(im_target_rpi_crop.data, block_radius=block_radius, patch_radius=patch_radius)
         im_target_rpi_crop.data = data_denoised
+
+        im_target_rpi = im_target_rpi_crop
+        im_sc_seg_rpi = im_sc_seg_rpi_crop
+    else:
+        fname_mask = None
 
     # interpolate image to reference square image (resample and square crop centered on SC)
     printv('  Interpolate data to the model space...', verbose, 'normal')
-    list_im_slices = interpolate_im_to_ref(im_target_rpi_crop, im_sc_seg_rpi_crop, new_res=new_res, sq_size_size_mm=square_size_size_mm)
+    list_im_slices = interpolate_im_to_ref(im_target_rpi, im_sc_seg_rpi, new_res=new_res, sq_size_size_mm=square_size_size_mm)
     original_info['interpolated_images'] = list_im_slices # list of images (not Slice() objects)
 
     printv('  Mask data using the spinal cord segmentation...', verbose, 'normal')
-    list_sc_seg_slices = interpolate_im_to_ref(im_sc_seg_rpi_crop, im_sc_seg_rpi_crop, new_res=new_res, sq_size_size_mm=square_size_size_mm, interpolation_mode=1)
+    list_sc_seg_slices = interpolate_im_to_ref(im_sc_seg_rpi, im_sc_seg_rpi, new_res=new_res, sq_size_size_mm=square_size_size_mm, interpolation_mode=1)
     for i in range(len(list_im_slices)):
         # list_im_slices[i].data[list_sc_seg_slices[i].data == 0] = 0
         list_sc_seg_slices[i] = binarize(list_sc_seg_slices[i], thr_min=0.5, thr_max=1)
