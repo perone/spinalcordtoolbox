@@ -324,6 +324,7 @@ class Model:
     # ------------------------------------------------------------------------------------------------------------------
     def normalize_model_data(self):
         # get the id of the slices by vertebral level
+        '''
         id_by_level = {}
         for dic_slice in self.slices:
             level_int = int(round(dic_slice.level))
@@ -375,12 +376,15 @@ class Model:
         # save average median values in a Panda data frame
         data_intensities = {'GM': pd.Series(list_gm_by_level, index=list_indexes), 'WM': pd.Series(list_wm_by_level, index=list_indexes), 'MIN': pd.Series(list_min_by_level, index=list_indexes), 'MAX': pd.Series(list_max_by_level, index=list_indexes)}
         self.intensities = pd.DataFrame(data_intensities)
-
+        '''
+        from skimage import exposure
         # Normalize slices using dic values
         for dic_slice in self.slices:
-            level_int = int(round(dic_slice.level))
-            av_gm_slice, av_wm_slice = average_gm_wm([dic_slice], bin=True)
-            norm_im_M = normalize_slice(dic_slice.im_M, av_gm_slice, av_wm_slice, self.intensities['GM'][level_int], self.intensities['WM'][level_int], val_min=self.intensities['MIN'][level_int], val_max=self.intensities['MAX'][level_int])
+            #level_int = int(round(dic_slice.level))
+            #av_gm_slice, av_wm_slice = average_gm_wm([dic_slice], bin=True)
+            #norm_im_M = normalize_slice(dic_slice.im_M, av_gm_slice, av_wm_slice, self.intensities['GM'][level_int], self.intensities['WM'][level_int], val_min=self.intensities['MIN'][level_int], val_max=self.intensities['MAX'][level_int])
+            data_rescale = exposure.rescale_intensity(dic_slice.im_M, out_range=(0, 1))
+            norm_im_M = exposure.equalize_adapthist(data_rescale)
             dic_slice.set(im_m=norm_im_M)
 
 
