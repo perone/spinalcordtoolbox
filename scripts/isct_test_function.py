@@ -166,7 +166,8 @@ def process_results(results, subjects_name, function, folder_dataset, parameters
 def function_launcher(args):
     import importlib
     # append local script to PYTHONPATH for import
-    sys.path.append(os.path.abspath(os.curdir))
+    sys.path.append('{}/testing'.format(os.getenv('SCT_DIR')))
+    # sys.path.append(os.path.abspath(os.curdir))
     script_to_be_run = importlib.import_module('test_' + args[0])  # import function as a module
     try:
         output = script_to_be_run.test(*args[1:])
@@ -200,25 +201,27 @@ def test_function(function, folder_dataset, parameters='', nb_cpu=None, json_req
     os.environ["ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS"] = "1"
 
     from multiprocessing import Pool
-
+    import ponyexpress
     # create datasets with parameters
     import itertools
     data_and_params = itertools.izip(itertools.repeat(function), data_subjects, itertools.repeat(parameters))
 
     pool = Pool(processes=nb_cpu, initializer=init_worker)
+    # pool = ponyexpress.MpiPool(n_proc=nb_cpu)
+
 
     try:
         async_results = pool.map_async(function_launcher, data_and_params)
         pool.close()
         pool.join()  # waiting for all the jobs to be done
-        results = process_results(async_results.get(99999999), subjects_name, function, folder_dataset, parameters)  # get the sorted results once all jobs are finished
+        results = process_results(async_results.get(), subjects_name, function, folder_dataset, parameters)  # get the sorted results once all jobs are finished
     except KeyboardInterrupt:
         print "\nWarning: Caught KeyboardInterrupt, terminating workers"
         pool.terminate()
         pool.join()
-        # return
-        # raise KeyboardInterrupt
-        # sys.exit(2)
+        return
+        raise KeyboardInterrupt
+        sys.exit(2)
     except Exception as e:
         sct.printv('Error on line {}'.format(sys.exc_info()[-1].tb_lineno), 1, 'warning')
         sct.printv(str(e), 1, 'warning')
@@ -445,15 +448,9 @@ def main(args=None):
         dict_std.pop('status')
         dict_std.pop('subject')
         print 'STD: ' + str(dict_std)
-	# translate status
-        status = {0: 'Passed', 1: 'Crashed', 99: 'Failed', 200: 'Input file(s) missing',
-                  201: 'Ground-truth file(s) missing'}
         # print detailed results
         print '\nDETAILED RESULTS:'
-        r = copy.deepcopy(results_display)
-        for i, s in enumerate(r.status):
-            r.status[i] = status[s]
-        print r.to_string()
+        print results_display.to_string()
 
         if verbose == 2:
             import seaborn as sns
