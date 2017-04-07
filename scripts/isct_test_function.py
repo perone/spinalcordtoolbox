@@ -201,13 +201,13 @@ def test_function(function, folder_dataset, parameters='', nb_cpu=None, json_req
     os.environ["ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS"] = "1"
 
     from multiprocessing import Pool
-    import ponyexpress
+    import distribute2mpi
     # create datasets with parameters
     import itertools
     data_and_params = itertools.izip(itertools.repeat(function), data_subjects, itertools.repeat(parameters))
 
-    pool = Pool(processes=nb_cpu, initializer=init_worker)
-    # pool = ponyexpress.MpiPool(n_proc=nb_cpu)
+    #pool = Pool(processes=nb_cpu, initializer=init_worker)
+    pool = distribute2mpi.MpiPool(n_proc=nb_cpu)
 
 
     try:
